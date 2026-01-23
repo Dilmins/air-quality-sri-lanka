@@ -66,8 +66,7 @@ latest_data = {
 # ============================================================================
 
 def fetch_outdoor_aqi(lat: float, lon: float, api_key: str) -> Optional[Dict]:
-    url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}"
-    try:
+    url = f"https://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}"
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
@@ -92,7 +91,7 @@ def fetch_outdoor_aqi(lat: float, lon: float, api_key: str) -> Optional[Dict]:
         return None
 
 def fetch_weather(lat: float, lon: float, api_key: str) -> Optional[Dict]:
-    url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
@@ -372,8 +371,14 @@ def background_updater():
             print(f"Update error: {e}")
         time.sleep(60)
 
-thread = threading.Thread(target=background_updater, daemon=True)
-thread.start()
+def start_background_thread():
+    thread = threading.Thread(target=background_updater, daemon=True)
+    thread.start()
+
+@app.before_first_request
+def initialize():
+    start_background_thread()
+
 
 # ============================================================================
 # FLASK ROUTES
