@@ -287,7 +287,7 @@ class IAQSystem:
         
     def _initialize_models(self):
         print("Initializing models...")
-        n_samples = 500  # Reduced for lower CPU
+        n_samples = 500
         X_train, y_train = [], []
         
         for _ in range(n_samples):
@@ -409,10 +409,8 @@ def change_city():
     LATITUDE = CITIES[city]['lat']
     LONGITUDE = CITIES[city]['lon']
     
-    # Reinitialize system with new coordinates
     system = IAQSystem(API_KEY, LATITUDE, LONGITUDE)
     
-    # Get fresh data
     updated_data = system.update()
     if updated_data:
         global latest_data
@@ -430,14 +428,16 @@ def refresh():
         return jsonify(data)
     return jsonify({'error': 'Failed to fetch data'}), 500
 
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'}), 200
+
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
     print("=" * 70)
-    print("  Indoor Air Quality Intelligence System - Web Version")
+    print("  Indoor Air Quality Intelligence System")
     print("=" * 70)
-    print(f" Default Location: {current_city}, Sri Lanka")
-    print(" Server starting at http://localhost:5000")
-    print(" Auto-refresh: Every 60 seconds")
+    print(f" Location: {current_city}, Sri Lanka")
+    print(f" Server starting on port {port}")
     print("=" * 70)
-    print("Press Ctrl+C to stop the server")
-    print("=" * 70)
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
+    app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
