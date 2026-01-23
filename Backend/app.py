@@ -9,7 +9,7 @@ import threading
 import time
 import os
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # FLASK APP
 # -----------------------------------------------------------------------------
 
@@ -22,7 +22,7 @@ CORS(app)
 
 print("🚀 IAQ System booting")
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # CONFIG (ENV ONLY — NO HARDCODED SECRETS)
 # -----------------------------------------------------------------------------
 
@@ -48,25 +48,23 @@ CITIES = {
 
 current_city = "Colombo"
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # GLOBAL STATE (THREAD-SAFE)
 # -----------------------------------------------------------------------------
 
 latest_data = {}
 data_lock = threading.Lock()
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # DATA FETCH (HTTPS ONLY)
 # -----------------------------------------------------------------------------
 
 def fetch_outdoor_aqi(lat: float, lon: float) -> Optional[Dict]:
     url = "https://api.openweathermap.org/data/2.5/air_pollution"
     params = {"lat": lat, "lon": lon, "appid": API_KEY}
-
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
     d = r.json()["list"][0]
-
     return {
         "aqi": d["main"]["aqi"],
         "pm25": d["components"]["pm2_5"],
@@ -79,11 +77,9 @@ def fetch_outdoor_aqi(lat: float, lon: float) -> Optional[Dict]:
 def fetch_weather(lat: float, lon: float) -> Optional[Dict]:
     url = "https://api.openweathermap.org/data/2.5/weather"
     params = {"lat": lat, "lon": lon, "appid": API_KEY, "units": "metric"}
-
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
     d = r.json()
-
     return {
         "temp": d["main"]["temp"],
         "humidity": d["main"]["humidity"],
@@ -91,14 +87,13 @@ def fetch_weather(lat: float, lon: float) -> Optional[Dict]:
         "pressure": d["main"]["pressure"],
     }
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # FEATURE ENGINEERING
 # -----------------------------------------------------------------------------
 
 def engineer_features(aqi, weather, ts):
     hour = ts.hour
     dow = ts.weekday()
-
     return np.array([
         aqi["aqi"], aqi["pm25"], aqi["pm10"], aqi["no2"], aqi["o3"], aqi["co"],
         weather["temp"], weather["humidity"], weather["wind_speed"], weather["pressure"],
@@ -113,7 +108,7 @@ def engineer_features(aqi, weather, ts):
         np.cos(2 * np.pi * hour / 24),
     ], dtype=np.float32)
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # MODEL SYSTEM
 # -----------------------------------------------------------------------------
 
@@ -141,14 +136,11 @@ class IAQSystem:
     def update(self):
         aqi = fetch_outdoor_aqi(self.lat, self.lon)
         weather = fetch_weather(self.lat, self.lon)
-
         ts = datetime.now()
         feat = engineer_features(aqi, weather, ts)
-
         indoor = float(self.reg.predict([feat])[0])
         anomaly = self.anom.predict([feat])[0] == -1
         outdoor = aqi["aqi"] * 50
-
         return {
             "outdoor_aqi": outdoor,
             "temp": weather["temp"],
@@ -164,7 +156,7 @@ class IAQSystem:
             "city": current_city,
         }
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # BACKGROUND WORKER (GUNICORN SAFE)
 # -----------------------------------------------------------------------------
 
@@ -174,7 +166,6 @@ _bg_started = False
 def background_loop():
     global latest_data
     print("✅ Background thread running")
-
     while True:
         try:
             data = system.update()
@@ -192,7 +183,7 @@ def start_background():
         threading.Thread(target=background_loop, daemon=True).start()
         _bg_started = True
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # ROUTES
 # -----------------------------------------------------------------------------
 
@@ -213,10 +204,8 @@ def cities():
 def change_city():
     global system, current_city
     city = request.json.get("city")
-
     if city not in CITIES:
         return jsonify({"error": "Invalid city"}), 400
-
     current_city = city
     system = IAQSystem(**CITIES[city])
     return jsonify({"status": "ok", "city": city})
@@ -225,11 +214,10 @@ def change_city():
 def health():
     return jsonify({"status": "healthy"})
 
-# -----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------- 
 # LOCAL DEV ONLY
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
