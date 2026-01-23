@@ -1,7 +1,9 @@
 import multiprocessing
 
-# Server socket
-bind = "0.0.0.0:10000"
+# Server socket - Railway uses PORT env variable
+import os
+port = os.environ.get("PORT", "8080")
+bind = f"0.0.0.0:{port}"
 
 # Worker processes
 workers = 2
