@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Quality Monitoring System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --navy-primary: #1e3a5f;
+            --navy-secondary: #2c5282;
+            --slate-dark: #1a202c;
+            --slate: #2d3748;
+            --slate-light: #4a5568;
+            --gray: #718096;
+            --gray-light: #a0aec0;
+            --border: #cbd5e0;
+            --bg-primary: #f7fafc;
+            --bg-secondary: #edf2f7;
+            --white: #ffffff;
+            --blue-accent: #3182ce;
+            --red-accent: #e53e3e;
+            --yellow-accent: #d69e2e;
+            --green-accent: #38a169;
+        }
+
+        body {
+            font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--slate-dark);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Navigation */
+        .nav {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 0 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 64px;
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-logo {
+            width: 32px;
+            height: 32px;
+            background: var(--navy-primary);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .nav-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--slate-dark);
+            letter-spacing: -0.01em;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .nav-meta {
+            font-size: 13px;
+            color: var(--gray);
+            font-weight: 400;
+        }
+
+        .city-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--slate);
+            font-weight: 500;
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .city-selector {
+            position: relative;
+        }
+
+        .city-dropdown {
+            padding: 8px 32px 8px 12px;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--slate-dark);
+            font-weight: 500;
+            cursor: pointer;
+            appearance: none;
+            font-family: 'Open Sans', sans-serif;
+            transition: border-color 0.15s ease;
+        }
+
+        .city-dropdown:hover {
+            border-color: var(--navy-primary);
+        }
+
+        .city-dropdown:focus {
+            outline: none;
+            border-color: var(--navy-primary);
+            box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
+        }
+
+        .city-selector::after {
+            content: '▼';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 10px;
+            color: var(--gray);
+            pointer-events: none;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--slate);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--green-accent);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: var(--navy-primary);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            font-family: 'Open Sans', sans-serif;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: var(--navy-secondary);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Main Content */
+        .main {
+            flex: 1;
+            max-width: 1440px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 32px;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--slate-dark);
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .page-subtitle {
+            font-size: 15px;
+            color: var(--gray);
+            max-width: 720px;
+            line-height: 1.7;
+        }
+
+        /* Grid System */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        /* Data Panels */
+        .panel {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--slate-dark);
+            letter-spacing: -0.01em;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .panel-label {
+            font-size: 12px;
+            color: var(--gray);
+            font-family: 'IBM Plex Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .panel-body {
+            padding: 20px;
+        }
+
+        /* Outdoor Panel */
+        .outdoor-panel {
+            grid-column: span 5;
+        }
+
+        .data-table {
+            width: 100%;
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+
+        .data-row:last-child {
+            border-bottom: none;
+        }
+
+        .data-label {
+            font-size: 14px;
+            color: var(--slate);
+            font-weight: 500;
+        }
+
+        .data-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--slate-dark);
+        }
+
+        /* Indoor Panel */
+        .indoor-panel {
+            grid-column: span 3;
+        }
+
+        .aqi-display {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .aqi-number {
+            font-size: 72px;
+            font-weight: 700;
+            line-height: 1;
+            color: var(--slate-dark);
+            margin-bottom: 12px;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .aqi-unit {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--gray);
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 16px;
+        }
+
+        .badge-good { background: #e6f7ed; color: #1f7a3f; border: 1px solid #b3e6c9; }
+        .badge-moderate { background: #fef6e7; color: #976a1f; border: 1px solid #f4d9a6; }
+        .badge-sensitive { background: #fff4e6; color: #9a4a1f; border: 1px solid #f4c9a6; }
+        .badge-unhealthy { background: #fce8e8; color: #a31f1f; border: 1px solid #f4b3b3; }
+        .badge-very-unhealthy { background: #f3e8f7; color: #6b1f8f; border: 1px solid #d9b3e6; }
+        .badge-hazardous { background: #fce8f3; color: #8f1f5c; border: 1px solid #f4b3d9; }
+
+        .alert {
+            display: none;
+            margin-top: 16px;
+            padding: 12px;
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 4px;
+        }
+
+        .alert.active {
+            display: block;
+        }
+
+        .alert-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 4px;
+        }
+
+        .alert-text {
+            font-size: 11px;
+            color: #78350f;
+            line-height: 1.4;
+        }
+
+        /* Action Panel */
+        .action-panel {
+            grid-column: span 4;
+        }
+
+        .action-content {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .action-status {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+
+        .action-status.open {
+            background: #e6f7ed;
+        }
+
+        .action-status.close {
+            background: #fce8e8;
+        }
+
+        .action-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .action-title.open { color: var(--green-accent); }
+        .action-title.close { color: var(--red-accent); }
+
+        .action-description {
+            font-size: 14px;
+            color: var(--slate);
+            line-height: 1.5;
+        }
+
+        /* Info Panel */
+        .info-panel {
+            grid-column: span 12;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .info-card {
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+
+        .info-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--white);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 12px;
+        }
+
+        .info-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--slate-dark);
+            margin-bottom: 8px;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .info-text {
+            font-size: 13px;
+            color: var(--gray);
+            line-height: 1.5;
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--white);
+            border-top: 1px solid var(--border);
+            padding: 20px 32px;
+            margin-top: 32px;
+        }
+
+        .footer-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            color: var(--gray);
+        }
+
+        .footer-text {
+            font-weight: 400;
+        }
+
+        /* Loading State */
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .outdoor-panel,
+            .indoor-panel,
+            .action-panel {
+                grid-column: span 12;
+            }
+        }
+
+                    @media (max-width: 768px) {
+            .nav-container {
+                padding: 0 16px;
+            }
+
+            .nav-meta {
+                display: none;
+            }
+
+            .nav-actions {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .city-dropdown {
+                font-size: 12px;
+                padding: 6px 28px 6px 10px;
+            }
+
+            .main {
+                padding: 16px;
+            }
+
+            .grid {
+                gap: 16px;
+            }
+
+            .page-title {
+                font-size: 24px;
+            }
+
+            .aqi-number {
+                font-size: 56px;
+            }
+
+            .action-title {
+                font-size: 22px;
+            }
+
+            .footer-container {
+                flex-direction: column;
+                gap: 8px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- Navigation -->
+        <nav class="nav">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <div class="nav-logo">AQ</div>
+                    <div>
+                        <div class="nav-title">Air Quality Monitoring</div>
+                        <div class="nav-meta">
+                            <span class="city-badge">
+                                <span>📍</span>
+                                <span id="current-city">Colombo</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="nav-actions">
+                    <div class="city-selector">
+                        <select class="city-dropdown" id="city-select" onchange="changeCity()">
+                            <option value="">Loading cities...</option>
+                        </select>
+                    </div>
+                    <div class="status">
+                        <span class="status-dot"></span>
+                        <span id="status-text">ONLINE</span>
+                    </div>
+                    <button class="btn" id="refresh-btn" onclick="refreshData()">
+                        <span id="btn-text">Refresh Data</span>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main">
+            <div class="page-header">
+                <h1 class="page-title">Environmental Monitoring Dashboard</h1>
+                <p class="page-subtitle">Real-time air quality prediction system using machine learning to analyze outdoor conditions and forecast indoor AQI levels with actionable ventilation recommendations.</p>
+            </div>
+
+            <div class="grid">
+                <!-- Outdoor Conditions -->
+                <div class="panel outdoor-panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Outdoor Environment</h2>
+                        <span class="panel-label">LIVE DATA</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="data-table">
+                            <div class="data-row">
+                                <span class="data-label">Air Quality Index</span>
+                                <span class="data-value" id="outdoor-aqi">--</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Temperature</span>
+                                <span class="data-value" id="temp">--°C</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Relative Humidity</span>
+                                <span class="data-value" id="humidity">--%</span>
+                            </div>
+                            <div class="data-row">
+                                <span class="data-label">Wind Speed</span>
+                                <span class="data-value" id="wind">-- m/s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Indoor Prediction -->
+                <div class="panel indoor-panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">Indoor Forecast</h2>
+                        <span class="panel-label">ML PREDICTION</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="aqi-display">
+                            <div class="aqi-number" id="indoor-aqi">--</div>
+                            <div class="aqi-unit">Indoor AQI</div>
+                            <div class="badge" id="health-badge">Analyzing...</div>
+                            <div class="alert" id="anomaly-alert">
+                                <div class="alert-title">ANOMALY DETECTED</div>
+                                <div class="alert-text">Unusual air quality pattern identified by isolation forest algorithm</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recommendation -->
+                <div class="panel action-panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">System Recommendation</h2>
+                        <span class="panel-label">AUTO-GENERATED</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="action-content">
+                            <div class="action-status" id="action-status">
+                                <span id="action-icon">⏳</span>
+                            </div>
+                            <div class="action-title" id="action-title">ANALYZING</div>
+                            <p class="action-description" id="action-desc">Processing environmental data...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Information -->
+                <div class="panel info-panel">
+                    <div class="panel-header">
+                        <h2 class="panel-title">System Architecture</h2>
+                        <span class="panel-label">TECHNICAL OVERVIEW</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="info-grid">
+                            <div class="info-card">
+                                <div class="info-icon">🔬</div>
+                                <div class="info-title">Random Forest Regression</div>
+                                <p class="info-text">Ensemble learning model with 30 decision trees, optimized for 8GB RAM systems with feature engineering pipeline</p>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-icon">⚠️</div>
+                                <div class="info-title">Isolation Forest Detection</div>
+                                <p class="info-text">Unsupervised anomaly detection algorithm monitoring 20 engineered features with 10% contamination threshold</p>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-icon">🌐</div>
+                                <div class="info-title">OpenWeatherMap API</div>
+                                <p class="info-text">60-second polling interval for air pollution and meteorological data within free tier rate limits</p>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-icon">⚙️</div>
+                                <div class="info-title">Decision Engine</div>
+                                <p class="info-text">Multi-factor analysis considering AQI differential, temperature range, humidity levels, and wind conditions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-container">
+                <span class="footer-text">Air Quality Monitoring System • 2026</span>
+                <span class="footer-text" id="last-update">Last updated: --</span>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        let autoRefreshInterval;
+        let isChangingCity = false;
+
+        // Load cities on page load
+        async function loadCities() {
+            try {
+                const res = await fetch('/api/cities');
+                const data = await res.json();
+                
+                const select = document.getElementById('city-select');
+                select.innerHTML = '';
+                
+                data.cities.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    if (city === data.current) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+                
+                document.getElementById('current-city').textContent = data.current;
+            } catch (err) {
+                console.error('Error loading cities:', err);
+            }
+        }
+
+        async function changeCity() {
+            const select = document.getElementById('city-select');
+            const city = select.value;
+            
+            if (!city || isChangingCity) return;
+            
+            isChangingCity = true;
+            const btn = document.getElementById('refresh-btn');
+            btn.disabled = true;
+            select.disabled = true;
+            
+            document.querySelector('.grid').classList.add('loading');
+            document.getElementById('status-text').textContent = 'UPDATING...';
+            
+            try {
+                const res = await fetch('/api/change-city', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ city })
+                });
+                
+                const data = await res.json();
+                updateUI(data);
+                document.getElementById('current-city').textContent = city;
+            } catch (err) {
+                console.error('Error changing city:', err);
+                document.getElementById('status-text').textContent = 'ERROR';
+            } finally {
+                document.querySelector('.grid').classList.remove('loading');
+                btn.disabled = false;
+                select.disabled = false;
+                isChangingCity = false;
+            }
+        }
+
+        async function fetchData() {
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+                updateUI(data);
+            } catch (err) {
+                console.error('Fetch error:', err);
+                document.getElementById('status-text').textContent = 'OFFLINE';
+            }
+        }
+
+        async function refreshData() {
+            const btn = document.getElementById('refresh-btn');
+            const btnText = document.getElementById('btn-text');
+            
+            btn.disabled = true;
+            btnText.textContent = 'Loading...';
+            document.querySelector('.grid').classList.add('loading');
+            
+            try {
+                const res = await fetch('/api/refresh');
+                const data = await res.json();
+                updateUI(data);
+            } catch (err) {
+                console.error('Refresh error:', err);
+            } finally {
+                document.querySelector('.grid').classList.remove('loading');
+                btnText.textContent = 'Refresh Data';
+                btn.disabled = false;
+            }
+        }
+
+        function updateUI(data) {
+            document.getElementById('outdoor-aqi').textContent = Math.round(data.outdoor_aqi);
+            document.getElementById('temp').textContent = data.temp.toFixed(1) + '°C';
+            document.getElementById('humidity').textContent = Math.round(data.humidity) + '%';
+            document.getElementById('wind').textContent = data.wind_speed.toFixed(1) + ' m/s';
+            
+            document.getElementById('indoor-aqi').textContent = Math.round(data.indoor_aqi);
+            
+            const badge = document.getElementById('health-badge');
+            badge.textContent = data.indoor_risk;
+            badge.className = 'badge ' + getBadgeClass(data.indoor_risk);
+            
+            const alert = document.getElementById('anomaly-alert');
+            alert.classList.toggle('active', data.is_anomaly);
+            
+            const actionStatus = document.getElementById('action-status');
+            const actionIcon = document.getElementById('action-icon');
+            const actionTitle = document.getElementById('action-title');
+            const actionDesc = document.getElementById('action-desc');
+            
+            const isOpen = data.recommendation.includes('OPEN');
+            
+            actionStatus.className = 'action-status ' + (isOpen ? 'open' : 'close');
+            actionIcon.textContent = isOpen ? '✓' : '✕';
+            actionTitle.textContent = data.recommendation;
+            actionTitle.className = 'action-title ' + (isOpen ? 'open' : 'close');
+            actionDesc.textContent = data.explanation;
+            
+            document.getElementById('status-text').textContent = 'ONLINE';
+            document.getElementById('last-update').textContent = 
+                'Last updated: ' + new Date(data.timestamp).toLocaleTimeString();
+            
+            if (data.city) {
+                document.getElementById('current-city').textContent = data.city;
+            }
+        }
+
+        function getBadgeClass(risk) {
+            const map = {
+                'Good': 'badge-good',
+                'Moderate': 'badge-moderate',
+                'Unhealthy for Sensitive Groups': 'badge-sensitive',
+                'Unhealthy': 'badge-unhealthy',
+                'Very Unhealthy': 'badge-very-unhealthy',
+                'Hazardous': 'badge-hazardous'
+            };
+            return map[risk] || '';
+        }
+
+        // Initialize
+        loadCities();
+        fetchData();
+        autoRefreshInterval = setInterval(fetchData, 60000);
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) fetchData();
+        });
+    </script>
+</body>
+</html>
