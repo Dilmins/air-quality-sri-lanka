@@ -33,7 +33,11 @@ CITIES = {
     "Matale": {"lat": 7.4675, "lon": 80.6234},
     "Gampaha": {"lat": 7.0914, "lon": 79.9990},
     "Nalluruwa": {"lat": 6.7000, "lon": 79.9167},
-    "Mirigama": {"lat": 7.2382, "lon": 80.1262}
+    "Mirigama": {"lat": 7.2382, "lon": 80.1262},
+    "Panadura": {"lat": 6.7133, "lon": 79.9026},
+    "Tokyo": {"lat": 35.6762, "lon": 139.6503},
+    "Osaka": {"lat": 34.6937, "lon": 135.5023},
+    "Hiroshima": {"lat": 34.3853, "lon": 132.4553}
 }
 
 current_city = "Colombo"
@@ -206,13 +210,16 @@ class WindowRecommender:
     @staticmethod
     def recommend(indoor_aqi: float, outdoor_aqi: float, temp: float,
                 humidity: float, wind_speed: float, is_anomaly: bool) -> Tuple[str, str, Dict]:
-        outdoor_better = outdoor_aqi < indoor_aqi - 10  # Outdoor must be significantly better
-        temp_ok = 10 <= temp <= 30
-        humidity_ok = 30 <= humidity <= 70
-        wind_moderate = wind_speed < 8.0
+        # Temperature and humidity ranges suitable for Sri Lanka's tropical climate
+        temp_ok = 20 <= temp <= 32
+        humidity_ok = 40 <= humidity <= 85
+        wind_moderate = wind_speed < 10.0
         
         indoor_risk = WindowRecommender.get_health_risk_band(indoor_aqi)
         outdoor_risk = WindowRecommender.get_health_risk_band(outdoor_aqi)
+        
+        # Outdoor is better if it's at least 15 points lower than indoor
+        outdoor_better = outdoor_aqi < indoor_aqi - 15
         
         metadata = {
             'indoor_risk': indoor_risk, 'outdoor_risk': outdoor_risk,
@@ -221,43 +228,55 @@ class WindowRecommender:
             'is_anomaly': is_anomaly
         }
         
+        # Handle anomalies first
         if is_anomaly:
             if outdoor_better and temp_ok:
-                return "OPEN WINDOWS", "Anomaly detected. Outdoor air is cleaner.", metadata
+                return "OPEN WINDOWS", "Anomaly detected. Outdoor air is cleaner - ventilate immediately.", metadata
             else:
-                return "CLOSE WINDOWS", "Anomaly detected. Keep windows closed.", metadata
+                return "CLOSE WINDOWS", "Anomaly detected. Keep windows closed for safety.", metadata
         
-        # If indoor air is already good, keep it that way
-        if indoor_aqi <= 50:
-            if outdoor_aqi <= 50 and temp_ok and humidity_ok and wind_moderate:
-                return "OPEN WINDOWS", "Both indoor and outdoor air quality are excellent. Safe to ventilate.", metadata
+        # When both indoor and outdoor are GOOD - open windows for fresh air
+        if indoor_aqi <= 50 and outdoor_aqi <= 50:
+            if temp_ok and humidity_ok and wind_moderate:
+                return "OPEN WINDOWS", "Excellent air quality both indoors and outdoors. Enjoy natural ventilation.", metadata
+            elif not temp_ok:
+                return "CLOSE WINDOWS", f"Air quality is good, but temperature ({temp:.1f}°C) is outside comfort range.", metadata
+            elif not humidity_ok:
+                return "CLOSE WINDOWS", f"Air quality is good, but humidity ({humidity:.0f}%) is outside comfort range.", metadata
             else:
-                return "CLOSE WINDOWS", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
+                return "CLOSE WINDOWS", f"Air quality is good, but wind is too strong ({wind_speed:.1f} m/s).", metadata
         
-        # If outdoor air is unhealthy, keep windows closed
-        if outdoor_aqi > 150:
-            return "CLOSE WINDOWS", f"Outdoor air is {outdoor_risk}. Keep windows closed.", metadata
+        # When outdoor is hazardous or very unhealthy - always close
+        if outdoor_aqi > 200:
+            return "CLOSE WINDOWS", f"Outdoor air is {outdoor_risk}. Keep windows closed and use air purifier.", metadata
         
-        # If indoor is poor and outdoor is better
-        if indoor_aqi > 100 and outdoor_better and temp_ok and humidity_ok:
-            return "OPEN WINDOWS", f"Indoor air is {indoor_risk}. Outdoor air is cleaner. Ventilate.", metadata
+        # When indoor is good but outdoor is moderate - close to maintain good indoor air
+        if indoor_aqi <= 50 and outdoor_aqi > 50:
+            return "CLOSE WINDOWS", f"Indoor air is excellent ({indoor_risk}). Keep windows closed to maintain quality.", metadata
         
-        # General ventilation when outdoor is significantly better
-        if outdoor_better and temp_ok and humidity_ok and wind_moderate:
-            return "OPEN WINDOWS", "Outdoor conditions favorable for ventilation.", metadata
+        # When indoor is moderate/unhealthy and outdoor is significantly better
+        if indoor_aqi > 50 and outdoor_better and temp_ok and humidity_ok:
+            return "OPEN WINDOWS", f"Indoor air is {indoor_risk}, outdoor is {outdoor_risk}. Ventilate to improve indoor quality.", metadata
         
-        # Environmental factors check
-        if not temp_ok:
-            return "CLOSE WINDOWS", f"Temperature {temp:.1f}°C is outside comfort range.", metadata
+        # When outdoor is moderately better but weather conditions aren't ideal
+        if outdoor_better:
+            if not temp_ok:
+                return "CLOSE WINDOWS", f"Outdoor air is cleaner, but temperature ({temp:.1f}°C) makes ventilation uncomfortable.", metadata
+            elif not humidity_ok:
+                return "CLOSE WINDOWS", f"Outdoor air is cleaner, but humidity ({humidity:.0f}%) makes ventilation uncomfortable.", metadata
+            elif not wind_moderate:
+                return "CLOSE WINDOWS", f"Outdoor air is cleaner, but wind ({wind_speed:.1f} m/s) is too strong.", metadata
         
-        if not humidity_ok:
-            return "CLOSE WINDOWS", f"Humidity {humidity:.0f}% is outside comfort range.", metadata
+        # When indoor is acceptable (moderate) - maintain status
+        if indoor_aqi <= 100:
+            return "CLOSE WINDOWS", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
         
-        if wind_speed >= 8.0:
-            return "CLOSE WINDOWS", f"Wind speed {wind_speed:.1f} m/s is too strong.", metadata
+        # When both are similar quality - close to avoid unnecessary exchange
+        if abs(indoor_aqi - outdoor_aqi) < 15:
+            return "CLOSE WINDOWS", f"Indoor and outdoor air quality are similar ({indoor_risk}). Keep windows closed.", metadata
         
-        # Default: maintain current indoor conditions
-        return "CLOSE WINDOWS", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
+        # Default case - close windows
+        return "CLOSE WINDOWS", f"Indoor: {indoor_risk}, Outdoor: {outdoor_risk}. Keep windows closed.", metadata
 
 class IAQSystem:
     def __init__(self, api_key: str, lat: float, lon: float):
