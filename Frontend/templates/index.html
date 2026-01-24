@@ -44,7 +44,6 @@
             flex-direction: column;
         }
 
-        /* Navigation */
         .nav {
             background: var(--white);
             border-bottom: 1px solid var(--border);
@@ -200,7 +199,6 @@
             cursor: not-allowed;
         }
 
-        /* Main Content */
         .main {
             flex: 1;
             max-width: 1440px;
@@ -229,7 +227,6 @@
             line-height: 1.7;
         }
 
-        /* Grid System */
         .grid {
             display: grid;
             grid-template-columns: repeat(12, 1fr);
@@ -237,7 +234,6 @@
             margin-bottom: 24px;
         }
 
-        /* Data Panels */
         .panel {
             background: var(--white);
             border: 1px solid var(--border);
@@ -264,7 +260,6 @@
         .panel-label {
             font-size: 12px;
             color: var(--gray);
-            font-family: 'IBM Plex Mono', monospace;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
@@ -273,7 +268,6 @@
             padding: 20px;
         }
 
-        /* Outdoor Panel */
         .outdoor-panel {
             grid-column: span 5;
         }
@@ -306,7 +300,6 @@
             color: var(--slate-dark);
         }
 
-        /* Indoor Panel */
         .indoor-panel {
             grid-column: span 3;
         }
@@ -375,7 +368,6 @@
             line-height: 1.4;
         }
 
-        /* Action Panel */
         .action-panel {
             grid-column: span 4;
         }
@@ -421,7 +413,6 @@
             line-height: 1.5;
         }
 
-        /* Info Panel */
         .info-panel {
             grid-column: span 12;
         }
@@ -464,7 +455,6 @@
             line-height: 1.5;
         }
 
-        /* Footer */
         .footer {
             background: var(--white);
             border-top: 1px solid var(--border);
@@ -486,13 +476,11 @@
             font-weight: 400;
         }
 
-        /* Loading State */
         .loading {
             opacity: 0.6;
             pointer-events: none;
         }
 
-        /* Responsive */
         @media (max-width: 1200px) {
             .outdoor-panel,
             .indoor-panel,
@@ -501,7 +489,7 @@
             }
         }
 
-                    @media (max-width: 768px) {
+        @media (max-width: 768px) {
             .nav-container {
                 padding: 0 16px;
             }
@@ -550,7 +538,6 @@
 </head>
 <body>
     <div class="app">
-        <!-- Navigation -->
         <nav class="nav">
             <div class="nav-container">
                 <div class="nav-brand">
@@ -582,7 +569,6 @@
             </div>
         </nav>
 
-        <!-- Main Content -->
         <main class="main">
             <div class="page-header">
                 <h1 class="page-title">Environmental Monitoring Dashboard</h1>
@@ -590,7 +576,6 @@
             </div>
 
             <div class="grid">
-                <!-- Outdoor Conditions -->
                 <div class="panel outdoor-panel">
                     <div class="panel-header">
                         <h2 class="panel-title">Outdoor Environment</h2>
@@ -618,7 +603,6 @@
                     </div>
                 </div>
 
-                <!-- Indoor Prediction -->
                 <div class="panel indoor-panel">
                     <div class="panel-header">
                         <h2 class="panel-title">Indoor Forecast</h2>
@@ -637,7 +621,6 @@
                     </div>
                 </div>
 
-                <!-- Recommendation -->
                 <div class="panel action-panel">
                     <div class="panel-header">
                         <h2 class="panel-title">System Recommendation</h2>
@@ -654,7 +637,6 @@
                     </div>
                 </div>
 
-                <!-- System Information -->
                 <div class="panel info-panel">
                     <div class="panel-header">
                         <h2 class="panel-title">System Architecture</h2>
@@ -688,7 +670,6 @@
             </div>
         </main>
 
-        <!-- Footer -->
         <footer class="footer">
             <div class="footer-container">
                 <span class="footer-text">Air Quality Monitoring System • 2026</span>
@@ -701,7 +682,6 @@
         let autoRefreshInterval;
         let isChangingCity = false;
 
-        // Load cities on page load
         async function loadCities() {
             try {
                 const res = await fetch('/api/cities');
@@ -842,7 +822,6 @@
             return map[risk] || '';
         }
 
-        // Initialize
         loadCities();
         fetchData();
         autoRefreshInterval = setInterval(fetchData, 60000);
