@@ -250,9 +250,9 @@ class WindowRecommender:
         if outdoor_aqi > 200:
             return "CLOSE WINDOWS", f"Outdoor air is {outdoor_risk}. Keep windows closed and use air purifier.", metadata
         
-        # When indoor is good but outdoor is moderate - close to maintain good indoor air
+        # When indoor is good but outdoor is moderate/poor - keep closed to maintain good indoor air
         if indoor_aqi <= 50 and outdoor_aqi > 50:
-            return "CLOSE WINDOWS", f"Indoor air is excellent ({indoor_risk}). Keep windows closed to maintain quality.", metadata
+            return "KEEP CLOSED (GOOD)", f"Indoor air is excellent ({indoor_risk}). Keep windows closed to maintain quality.", metadata
         
         # When indoor is moderate/unhealthy and outdoor is significantly better
         if indoor_aqi > 50 and outdoor_better and temp_ok and humidity_ok:
@@ -269,14 +269,14 @@ class WindowRecommender:
         
         # When indoor is acceptable (moderate) - maintain status
         if indoor_aqi <= 100:
-            return "CLOSE WINDOWS", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
+            return "KEEP CLOSED (MAINTAIN)", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
         
         # When both are similar quality - close to avoid unnecessary exchange
         if abs(indoor_aqi - outdoor_aqi) < 15:
-            return "CLOSE WINDOWS", f"Indoor and outdoor air quality are similar ({indoor_risk}). Keep windows closed.", metadata
+            return "KEEP CLOSED (STABLE)", f"Indoor and outdoor air quality are similar ({indoor_risk}). Keep windows closed.", metadata
         
         # Default case - close windows
-        return "CLOSE WINDOWS", f"Indoor: {indoor_risk}, Outdoor: {outdoor_risk}. Keep windows closed.", metadata
+        return "KEEP CLOSED", f"Indoor: {indoor_risk}, Outdoor: {outdoor_risk}. Keep windows closed.", metadata
 
 def generate_realistic_training_data():
     """

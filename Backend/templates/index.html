@@ -396,6 +396,10 @@
             background: #fce8e8;
         }
 
+        .action-status.good-close {
+            background: #e6f7ed;
+        }
+
         .action-title {
             font-size: 28px;
             font-weight: 700;
@@ -406,6 +410,7 @@
 
         .action-title.open { color: var(--green-accent); }
         .action-title.close { color: var(--red-accent); }
+        .action-title.good-close { color: var(--green-accent); }
 
         .action-description {
             font-size: 14px;
@@ -647,22 +652,22 @@
                             <div class="info-card">
                                 <div class="info-icon">🔬</div>
                                 <div class="info-title">Random Forest Regression</div>
-                                <p class="info-text">Ensemble learning model with 30 decision trees, optimized for 8GB RAM systems with feature engineering pipeline</p>
+                                <p class="info-text">Ensemble learning model with 50 decision trees trained on 2000 realistic samples based on building physics and indoor air quality research</p>
                             </div>
                             <div class="info-card">
                                 <div class="info-icon">⚠️</div>
                                 <div class="info-title">Isolation Forest Detection</div>
-                                <p class="info-text">Unsupervised anomaly detection algorithm monitoring 20 engineered features with 10% contamination threshold</p>
+                                <p class="info-text">Unsupervised anomaly detection algorithm monitoring 20 engineered features with 5% contamination threshold for outlier identification</p>
                             </div>
                             <div class="info-card">
-                                <div class="info-icon">🌐</div>
+                                <div class="info-icon">🌍</div>
                                 <div class="info-title">OpenWeatherMap API</div>
                                 <p class="info-text">60-second polling interval for air pollution and meteorological data within free tier rate limits</p>
                             </div>
                             <div class="info-card">
                                 <div class="info-icon">⚙️</div>
                                 <div class="info-title">Decision Engine</div>
-                                <p class="info-text">Multi-factor analysis considering AQI differential, temperature range, humidity levels, and wind conditions</p>
+                                <p class="info-text">Multi-factor analysis considering AQI differential, temperature range, humidity levels, and wind conditions for ventilation recommendations</p>
                             </div>
                         </div>
                     </div>
@@ -794,11 +799,28 @@
             const actionDesc = document.getElementById('action-desc');
             
             const isOpen = data.recommendation.includes('OPEN');
+            const isGoodClose = data.recommendation.includes('KEEP CLOSED (GOOD)');
             
-            actionStatus.className = 'action-status ' + (isOpen ? 'open' : 'close');
-            actionIcon.textContent = isOpen ? '✓' : '✕';
+            // Color logic: 
+            // - OPEN WINDOWS (good) = green checkmark
+            // - KEEP CLOSED (GOOD) = green X (indoor air is good, keeping it that way)
+            // - CLOSE WINDOWS (bad) = red X
+            
+            if (isOpen) {
+                actionStatus.className = 'action-status open';
+                actionIcon.textContent = '✓';
+                actionTitle.className = 'action-title open';
+            } else if (isGoodClose) {
+                actionStatus.className = 'action-status good-close';
+                actionIcon.textContent = '✓';
+                actionTitle.className = 'action-title good-close';
+            } else {
+                actionStatus.className = 'action-status close';
+                actionIcon.textContent = '✕';
+                actionTitle.className = 'action-title close';
+            }
+            
             actionTitle.textContent = data.recommendation;
-            actionTitle.className = 'action-title ' + (isOpen ? 'open' : 'close');
             actionDesc.textContent = data.explanation;
             
             document.getElementById('status-text').textContent = 'ONLINE';
