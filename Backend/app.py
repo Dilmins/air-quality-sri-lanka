@@ -143,8 +143,8 @@ def engineer_features(aqi_data: Optional[Dict], weather_data: Optional[Dict], ti
 class IAQRegressor:
     def __init__(self):
         self.model = RandomForestRegressor(
-            n_estimators=30, max_depth=8, min_samples_split=15,
-            min_samples_leaf=8, max_features='sqrt', n_jobs=1, random_state=42
+            n_estimators=50, max_depth=10, min_samples_split=10,
+            min_samples_leaf=5, max_features='sqrt', n_jobs=1, random_state=42
         )
         self.is_trained = False
         self.feature_importance = None
@@ -174,7 +174,7 @@ class IAQRegressor:
 class IAQAnomalyDetector:
     def __init__(self):
         self.model = IsolationForest(
-            n_estimators=30, max_samples=128, contamination=0.1,
+            n_estimators=50, max_samples=256, contamination=0.05,
             random_state=42, n_jobs=1
         )
         self.is_trained = False
@@ -278,6 +278,123 @@ class WindowRecommender:
         # Default case - close windows
         return "CLOSE WINDOWS", f"Indoor: {indoor_risk}, Outdoor: {outdoor_risk}. Keep windows closed.", metadata
 
+def generate_realistic_training_data():
+    """
+    Generate training data based on real-world research on indoor/outdoor air quality relationships.
+    
+    Based on scientific literature:
+    - Indoor/outdoor PM2.5 ratios typically range from 0.2 to 1.2
+    - Infiltration rates depend on building characteristics, ventilation, and outdoor conditions
+    - Temperature and humidity affect particle deposition and resuspension
+    - Time of day affects occupancy and activities (cooking, cleaning)
+    """
+    
+    X_train, y_train = [], []
+    n_samples = 2000
+    
+    for _ in range(n_samples):
+        # Outdoor conditions based on real-world distributions
+        outdoor_aqi_raw = np.random.choice([1, 2, 3, 4, 5], p=[0.35, 0.40, 0.15, 0.07, 0.03])
+        
+        if outdoor_aqi_raw == 1:  # Good
+            outdoor_aqi = np.random.uniform(10, 50)
+            pm25 = np.random.uniform(5, 25)
+        elif outdoor_aqi_raw == 2:  # Moderate
+            outdoor_aqi = np.random.uniform(50, 100)
+            pm25 = np.random.uniform(25, 50)
+        elif outdoor_aqi_raw == 3:  # Unhealthy for sensitive
+            outdoor_aqi = np.random.uniform(100, 150)
+            pm25 = np.random.uniform(50, 75)
+        elif outdoor_aqi_raw == 4:  # Unhealthy
+            outdoor_aqi = np.random.uniform(150, 200)
+            pm25 = np.random.uniform(75, 100)
+        else:  # Very unhealthy
+            outdoor_aqi = np.random.uniform(200, 300)
+            pm25 = np.random.uniform(100, 150)
+        
+        pm10 = pm25 * np.random.uniform(1.5, 2.5)
+        no2 = np.random.uniform(10, 100)
+        o3 = np.random.uniform(20, 120)
+        co = np.random.uniform(200, 1500)
+        
+        # Weather conditions realistic for tropical/temperate climates
+        temp = np.random.uniform(15, 35)
+        humidity = np.random.uniform(30, 90)
+        wind_speed = np.random.gamma(2, 1.5)  # Realistic wind distribution
+        pressure = np.random.uniform(990, 1030)
+        
+        # Temporal features
+        hour = np.random.randint(0, 24)
+        day_of_week = np.random.randint(0, 7)
+        is_rush_hour = 1 if (7 <= hour <= 9) or (17 <= hour <= 19) else 0
+        is_weekend = 1 if day_of_week >= 5 else 0
+        is_night = 1 if hour < 6 or hour > 22 else 0
+        
+        # Calculate indoor AQI based on realistic physics and building science
+        
+        # Base infiltration rate (0.2-0.7 depending on building tightness)
+        building_tightness = np.random.uniform(0.2, 0.7)
+        
+        # Wind increases infiltration
+        wind_factor = 1 + (wind_speed / 20)
+        
+        # Temperature difference affects stack effect
+        temp_diff_factor = 1 + abs(temp - 24) / 100
+        
+        # Combined infiltration rate
+        infiltration = building_tightness * wind_factor * temp_diff_factor
+        infiltration = min(1.2, max(0.15, infiltration))
+        
+        # Indoor sources contribution
+        # Higher during cooking hours (6-8am, 6-8pm) and cleaning
+        indoor_source = 0
+        if 6 <= hour <= 8 or 18 <= hour <= 20:
+            indoor_source = np.random.uniform(5, 25)  # Cooking emissions
+        elif 9 <= hour <= 17 and not is_weekend:
+            indoor_source = np.random.uniform(0, 8)  # Lower during work hours
+        else:
+            indoor_source = np.random.uniform(0, 12)  # General activity
+        
+        # Deposition and removal
+        # Higher humidity increases particle deposition
+        removal_rate = 0.05 + (humidity / 1000)
+        
+        # Natural ventilation when windows open (assumed open when outdoor is much better)
+        ventilation_bonus = 0
+        if outdoor_aqi < 60 and temp > 20 and temp < 30:
+            if np.random.random() < 0.3:  # 30% chance windows are open
+                ventilation_bonus = -np.random.uniform(5, 15)
+        
+        # Calculate indoor AQI
+        # I/O ratio based on infiltration, plus indoor sources, minus removal, plus ventilation
+        indoor_aqi = (pm25 * infiltration) + indoor_source - (pm25 * removal_rate) + ventilation_bonus
+        
+        # Add realistic noise
+        indoor_aqi += np.random.normal(0, 3)
+        
+        # Ensure reasonable bounds
+        indoor_aqi = max(5, min(400, indoor_aqi))
+        
+        # Feature engineering
+        temp_humidity_interaction = temp * humidity / 100.0
+        wind_aqi_interaction = wind_speed * outdoor_aqi
+        pollutant_mix = pm25 + 0.5 * pm10 + 0.3 * no2
+        hour_sin = np.sin(2 * np.pi * hour / 24)
+        hour_cos = np.cos(2 * np.pi * hour / 24)
+        
+        features = np.array([
+            outdoor_aqi, pm25, pm10, no2, o3, co,
+            temp, humidity, wind_speed, pressure,
+            hour, day_of_week, is_rush_hour, is_weekend, is_night,
+            temp_humidity_interaction, wind_aqi_interaction, pollutant_mix,
+            hour_sin, hour_cos
+        ], dtype=np.float32)
+        
+        X_train.append(features)
+        y_train.append(indoor_aqi)
+    
+    return np.array(X_train, dtype=np.float32), np.array(y_train, dtype=np.float32)
+
 class IAQSystem:
     def __init__(self, api_key: str, lat: float, lon: float):
         self.api_key = api_key
@@ -289,36 +406,17 @@ class IAQSystem:
         self._initialize_models()
         
     def _initialize_models(self):
-        n_samples = 500
-        X_train, y_train = [], []
+        """Initialize models with realistic training data based on building science research"""
+        print("Initializing ML models with realistic building physics data...")
+        X_train, y_train = generate_realistic_training_data()
         
-        for _ in range(n_samples):
-            outdoor_aqi = np.random.uniform(10, 150)
-            pm25 = outdoor_aqi * np.random.uniform(0.3, 0.8)
-            pm10 = pm25 * np.random.uniform(1.2, 2.0)
-            no2, o3, co = np.random.uniform(10, 80), np.random.uniform(20, 100), np.random.uniform(200, 1000)
-            temp, humidity = np.random.uniform(10, 30), np.random.uniform(30, 80)
-            wind_speed, pressure = np.random.uniform(0, 10), np.random.uniform(990, 1030)
-            hour, day_of_week = np.random.randint(0, 24), np.random.randint(0, 7)
-            is_rush_hour = 1 if (7 <= hour <= 9) or (17 <= hour <= 19) else 0
-            is_weekend = 1 if day_of_week >= 5 else 0
-            is_night = 1 if hour < 6 or hour > 22 else 0
-            
-            features = np.array([
-                outdoor_aqi, pm25, pm10, no2, o3, co, temp, humidity, wind_speed, pressure,
-                hour, day_of_week, is_rush_hour, is_weekend, is_night,
-                temp * humidity / 100.0, wind_speed * outdoor_aqi, pm25 + 0.5 * pm10 + 0.3 * no2,
-                np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24)
-            ])
-            
-            indoor_aqi = outdoor_aqi * min(0.7, 0.3 + 0.05 * wind_speed) + np.random.uniform(0, 10)
-            X_train.append(features)
-            y_train.append(indoor_aqi)
-        
-        X_train = np.array(X_train, dtype=np.float32)
-        y_train = np.array(y_train, dtype=np.float32)
+        print(f"Training Random Forest Regressor on {len(X_train)} samples...")
         self.regressor.train(X_train, y_train)
+        
+        print(f"Training Isolation Forest Anomaly Detector on {len(X_train)} samples...")
         self.anomaly_detector.train(X_train)
+        
+        print("ML models initialized successfully!")
         
     def update(self) -> Optional[Dict]:
         timestamp = datetime.now()
