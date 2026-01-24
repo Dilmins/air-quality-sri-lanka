@@ -205,8 +205,8 @@ class WindowRecommender:
     
     @staticmethod
     def recommend(indoor_aqi: float, outdoor_aqi: float, temp: float,
-                  humidity: float, wind_speed: float, is_anomaly: bool) -> Tuple[str, str, Dict]:
-        outdoor_better = outdoor_aqi < indoor_aqi * 0.8
+                humidity: float, wind_speed: float, is_anomaly: bool) -> Tuple[str, str, Dict]:
+        outdoor_better = outdoor_aqi < indoor_aqi - 10  # Outdoor must be significantly better
         temp_ok = 10 <= temp <= 30
         humidity_ok = 30 <= humidity <= 70
         wind_moderate = wind_speed < 8.0
@@ -227,15 +227,26 @@ class WindowRecommender:
             else:
                 return "CLOSE WINDOWS", "Anomaly detected. Keep windows closed.", metadata
         
+        # If indoor air is already good, keep it that way
+        if indoor_aqi <= 50:
+            if outdoor_aqi <= 50 and temp_ok and humidity_ok and wind_moderate:
+                return "OPEN WINDOWS", "Both indoor and outdoor air quality are excellent. Safe to ventilate.", metadata
+            else:
+                return "CLOSE WINDOWS", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
+        
+        # If outdoor air is unhealthy, keep windows closed
         if outdoor_aqi > 150:
             return "CLOSE WINDOWS", f"Outdoor air is {outdoor_risk}. Keep windows closed.", metadata
         
+        # If indoor is poor and outdoor is better
         if indoor_aqi > 100 and outdoor_better and temp_ok and humidity_ok:
             return "OPEN WINDOWS", f"Indoor air is {indoor_risk}. Outdoor air is cleaner. Ventilate.", metadata
         
+        # General ventilation when outdoor is significantly better
         if outdoor_better and temp_ok and humidity_ok and wind_moderate:
             return "OPEN WINDOWS", "Outdoor conditions favorable for ventilation.", metadata
         
+        # Environmental factors check
         if not temp_ok:
             return "CLOSE WINDOWS", f"Temperature {temp:.1f}°C is outside comfort range.", metadata
         
@@ -245,7 +256,8 @@ class WindowRecommender:
         if wind_speed >= 8.0:
             return "CLOSE WINDOWS", f"Wind speed {wind_speed:.1f} m/s is too strong.", metadata
         
-        return "CLOSE WINDOWS", "Maintain current indoor conditions.", metadata
+        # Default: maintain current indoor conditions
+        return "CLOSE WINDOWS", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
 
 class IAQSystem:
     def __init__(self, api_key: str, lat: float, lon: float):
