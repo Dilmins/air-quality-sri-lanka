@@ -8,10 +8,9 @@ from sklearn.ensemble import RandomForestRegressor, IsolationForest
 import threading
 import time
 import os
+import pickle
 
-app = Flask(__name__, 
-            template_folder='templates',
-            static_folder='static')
+app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
 
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
@@ -53,11 +52,22 @@ latest_data = {
     'indoor_risk': 'Unknown',
     'outdoor_risk': 'Unknown',
     'is_anomaly': False,
+    'rain_probability_24h': 0.0,
+    'rain_risk_curve': [],
     'recommendation': 'Loading...',
     'explanation': 'Fetching data...',
     'timestamp': datetime.now().isoformat(),
     'city': current_city
 }
+
+# Load rain model
+rain_model = None
+try:
+    with open('rain_model.pkl', 'rb') as f:
+        rain_model = pickle.load(f)
+        print("✅ Rain model loaded successfully")
+except Exception as e:
+    print(f"⚠️ Rain model not found: {e}")
 
 def fetch_outdoor_aqi(lat: float, lon: float, api_key: str) -> Optional[Dict]:
     url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}"
@@ -82,6 +92,7 @@ def fetch_outdoor_aqi(lat: float, lon: float, api_key: str) -> Optional[Dict]:
             'co': pollutants.get('co', 0)
         }
     except Exception as e:
+        print(f"AQI error: {e}")
         return None
 
 def fetch_weather(lat: float, lon: float, api_key: str) -> Optional[Dict]:
@@ -95,10 +106,119 @@ def fetch_weather(lat: float, lon: float, api_key: str) -> Optional[Dict]:
             'temp': data['main'].get('temp', 20),
             'humidity': data['main'].get('humidity', 50),
             'wind_speed': data['wind'].get('speed', 0),
-            'pressure': data['main'].get('pressure', 1013)
+            'pressure': data['main'].get('pressure', 1013),
+            'clouds': data.get('clouds', {}).get('all', 50)
         }
     except Exception as e:
+        print(f"Weather error: {e}")
         return None
+
+def fetch_24h_forecast(lat: float, lon: float, api_key: str) -> Optional[list]:
+    url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        forecast_list = data.get('list', [])[:8]  # Next 24 hours (8 x 3-hour intervals)
+        return forecast_list if forecast_list else None
+    except Exception as e:
+        print(f"Forecast error: {e}")
+        return None
+
+def calculate_dew_point(temp: float, humidity: float) -> float:
+    """Calculate dew point temperature"""
+    return temp - ((100 - humidity) / 5.0)
+
+def extract_rain_features(weather: Dict, forecast: list) -> Optional[np.ndarray]:
+    """Extract features for rain prediction from current weather and 24h forecast"""
+    if not weather or not forecast:
+        return None
+    
+    try:
+        temp = weather['temp']
+        humidity = weather['humidity']
+        pressure = weather['pressure']
+        wind_speed = weather['wind_speed']
+        clouds = weather['clouds']
+        dew_point = calculate_dew_point(temp, humidity)
+        
+        # Extract forecast statistics
+        humidities = [f['main']['humidity'] for f in forecast]
+        pressures = [f['main']['pressure'] for f in forecast]
+        cloud_covers = [f.get('clouds', {}).get('all', 50) for f in forecast]
+        rains = [f.get('rain', {}).get('3h', 0) for f in forecast]
+        
+        mean_humidity_24h = np.mean(humidities)
+        max_humidity_24h = np.max(humidities)
+        mean_pressure_24h = np.mean(pressures)
+        pressure_trend_24h = pressures[-1] - pressures[0] if len(pressures) > 1 else 0
+        mean_clouds_24h = np.mean(cloud_covers)
+        max_clouds_24h = np.max(cloud_covers)
+        total_rain_24h = sum(rains)
+        rain_steps_24h = sum(1 for r in rains if r > 0)
+        
+        features = np.array([
+            temp, humidity, pressure, wind_speed, clouds, dew_point,
+            mean_humidity_24h, max_humidity_24h, mean_pressure_24h, pressure_trend_24h,
+            mean_clouds_24h, max_clouds_24h, total_rain_24h, rain_steps_24h
+        ], dtype=np.float32)
+        
+        return features
+    except Exception as e:
+        print(f"Feature extraction error: {e}")
+        return None
+
+def generate_rain_risk_curve(forecast: list, ml_probability: float) -> list:
+    """Generate hour-by-hour rain risk curve from forecast data"""
+    if not forecast:
+        return []
+    
+    risk_curve = []
+    
+    for i, f in enumerate(forecast):
+        hour = i * 3  # 3-hour intervals
+        
+        try:
+            humidity = f['main']['humidity']
+            pressure = f['main']['pressure']
+            clouds = f.get('clouds', {}).get('all', 50)
+            has_rain = f.get('rain', {}).get('3h', 0) > 0
+            
+            # Calculate risk score based on conditions
+            risk = 0.0
+            
+            # Humidity contribution (0-35%)
+            if humidity > 85:
+                risk += 30
+            elif humidity > 75:
+                risk += 20
+            elif humidity > 65:
+                risk += 10
+            
+            # Pressure contribution (0-25%)
+            if pressure < 1005:
+                risk += 20
+            elif pressure < 1010:
+                risk += 10
+            
+            # Cloud cover contribution (0-25%)
+            risk += (clouds / 100) * 25
+            
+            # Actual rain detection (adds 20%)
+            if has_rain:
+                risk += 20
+            
+            # Blend with ML model prediction
+            risk = (risk * 0.6) + (ml_probability * 100 * 0.4)
+            
+            risk = max(0, min(100, risk))
+            risk_curve.append({'hour': hour, 'risk': round(risk, 1)})
+        except Exception as e:
+            print(f"Risk curve error at hour {hour}: {e}")
+            risk_curve.append({'hour': hour, 'risk': round(ml_probability * 100, 1)})
+    
+    return risk_curve
 
 def engineer_features(aqi_data: Optional[Dict], weather_data: Optional[Dict], timestamp: datetime) -> Optional[np.ndarray]:
     if aqi_data is None or weather_data is None:
@@ -111,31 +231,15 @@ def engineer_features(aqi_data: Optional[Dict], weather_data: Optional[Dict], ti
     is_weekend = 1 if day_of_week >= 5 else 0
     is_night = 1 if hour < 6 or hour > 22 else 0
     
-    outdoor_aqi = aqi_data['aqi']
-    pm25 = aqi_data['pm25']
-    pm10 = aqi_data['pm10']
-    no2 = aqi_data['no2']
-    o3 = aqi_data['o3']
-    co = aqi_data['co']
-    
-    temp = weather_data['temp']
-    humidity = weather_data['humidity']
-    wind_speed = weather_data['wind_speed']
-    pressure = weather_data['pressure']
-    
-    temp_humidity_interaction = temp * humidity / 100.0
-    wind_aqi_interaction = wind_speed * outdoor_aqi
-    pollutant_mix = pm25 + 0.5 * pm10 + 0.3 * no2
-    
-    hour_sin = np.sin(2 * np.pi * hour / 24)
-    hour_cos = np.cos(2 * np.pi * hour / 24)
-    
     features = np.array([
-        outdoor_aqi, pm25, pm10, no2, o3, co,
-        temp, humidity, wind_speed, pressure,
+        aqi_data['aqi'], aqi_data['pm25'], aqi_data['pm10'], aqi_data['no2'], aqi_data['o3'], aqi_data['co'],
+        weather_data['temp'], weather_data['humidity'], weather_data['wind_speed'], weather_data['pressure'],
         hour, day_of_week, is_rush_hour, is_weekend, is_night,
-        temp_humidity_interaction, wind_aqi_interaction, pollutant_mix,
-        hour_sin, hour_cos
+        weather_data['temp'] * weather_data['humidity'] / 100.0,
+        weather_data['wind_speed'] * aqi_data['aqi'],
+        aqi_data['pm25'] + 0.5 * aqi_data['pm10'] + 0.3 * aqi_data['no2'],
+        np.sin(2 * np.pi * hour / 24),
+        np.cos(2 * np.pi * hour / 24)
     ], dtype=np.float32)
     
     return features
@@ -143,42 +247,35 @@ def engineer_features(aqi_data: Optional[Dict], weather_data: Optional[Dict], ti
 class IAQRegressor:
     def __init__(self):
         self.model = RandomForestRegressor(
-            n_estimators=50, max_depth=10, min_samples_split=10,
-            min_samples_leaf=5, max_features='sqrt', n_jobs=1, random_state=42
+            n_estimators=30, max_depth=8, min_samples_split=15,
+            min_samples_leaf=8, max_features='sqrt', n_jobs=1, random_state=42
         )
         self.is_trained = False
-        self.feature_importance = None
     
     def train(self, X: np.ndarray, y: np.ndarray):
         self.model.fit(X, y)
         self.is_trained = True
-        self.feature_importance = self.model.feature_importances_
     
-    def predict(self, X: np.ndarray) -> Optional[float]:
+    def predict(self, X: np.ndarray) -> float:
         if not self.is_trained:
             return self._fallback_prediction(X)
         if X.ndim == 1:
             X = X.reshape(1, -1)
-        prediction = self.model.predict(X)[0]
-        return float(max(1.0, min(500.0, prediction)))
+        return float(max(1.0, min(500.0, self.model.predict(X)[0])))
     
     def _fallback_prediction(self, X: np.ndarray) -> float:
         outdoor_aqi = X[0]
         wind_speed = X[8]
-        is_night = X[14]
-        infiltration_factor = min(0.7, 0.3 + 0.05 * wind_speed)
-        offset = 5.0 if is_night == 0 else 2.0
-        indoor_aqi = outdoor_aqi * infiltration_factor + offset
-        return float(max(1.0, min(500.0, indoor_aqi)))
+        infiltration = min(0.7, 0.3 + 0.05 * wind_speed)
+        return float(max(1.0, min(500.0, outdoor_aqi * infiltration + 5.0)))
 
 class IAQAnomalyDetector:
     def __init__(self):
         self.model = IsolationForest(
-            n_estimators=50, max_samples=256, contamination=0.05,
+            n_estimators=30, max_samples=128, contamination=0.1,
             random_state=42, n_jobs=1
         )
         self.is_trained = False
-        self.threshold = -0.5
     
     def train(self, X: np.ndarray):
         self.model.fit(X)
@@ -186,16 +283,10 @@ class IAQAnomalyDetector:
     
     def detect(self, X: np.ndarray) -> bool:
         if not self.is_trained:
-            return self._fallback_detection(X)
+            return bool(X[0] > 150 or X[1] > 55)
         if X.ndim == 1:
             X = X.reshape(1, -1)
-        score = self.model.decision_function(X)[0]
-        return bool(score < self.threshold)
-    
-    def _fallback_detection(self, X: np.ndarray) -> bool:
-        outdoor_aqi, pm25, temp, humidity = X[0], X[1], X[6], X[7]
-        return bool(outdoor_aqi > 150 or pm25 > 55 or temp < 0 or 
-                    temp > 40 or humidity < 20 or humidity > 90)
+        return bool(self.model.decision_function(X)[0] < -0.5)
 
 class WindowRecommender:
     @staticmethod
@@ -209,191 +300,47 @@ class WindowRecommender:
     
     @staticmethod
     def recommend(indoor_aqi: float, outdoor_aqi: float, temp: float,
-                humidity: float, wind_speed: float, is_anomaly: bool) -> Tuple[str, str, Dict]:
-        # Temperature and humidity ranges suitable for Sri Lanka's tropical climate
-        temp_ok = 20 <= temp <= 32
-        humidity_ok = 40 <= humidity <= 85
-        wind_moderate = wind_speed < 10.0
+                  humidity: float, wind_speed: float, is_anomaly: bool,
+                  rain_probability: float) -> Tuple[str, str, Dict]:
+        
+        temp_ok = 15 <= temp <= 32
+        humidity_ok = 35 <= humidity <= 80
+        wind_moderate = wind_speed < 8.0
+        high_rain_risk = rain_probability > 0.5
         
         indoor_risk = WindowRecommender.get_health_risk_band(indoor_aqi)
         outdoor_risk = WindowRecommender.get_health_risk_band(outdoor_aqi)
-        
-        # Outdoor is better if it's at least 15 points lower than indoor
-        outdoor_better = outdoor_aqi < indoor_aqi - 15
+        outdoor_better = outdoor_aqi < indoor_aqi - 10
         
         metadata = {
-            'indoor_risk': indoor_risk, 'outdoor_risk': outdoor_risk,
-            'outdoor_better': outdoor_better, 'temp_ok': temp_ok,
-            'humidity_ok': humidity_ok, 'wind_moderate': wind_moderate,
+            'indoor_risk': indoor_risk,
+            'outdoor_risk': outdoor_risk,
+            'outdoor_better': outdoor_better,
+            'temp_ok': temp_ok,
+            'humidity_ok': humidity_ok,
+            'wind_moderate': wind_moderate,
             'is_anomaly': is_anomaly
         }
         
-        # Handle anomalies first
         if is_anomaly:
-            if outdoor_better and temp_ok:
-                return "OPEN WINDOWS", "Anomaly detected. Outdoor air is cleaner - ventilate immediately.", metadata
-            else:
-                return "CLOSE WINDOWS", "Anomaly detected. Keep windows closed for safety.", metadata
+            return ("KEEP CLOSED", "Anomaly detected. Keep windows closed for safety.", metadata)
         
-        # When both indoor and outdoor are GOOD - open windows for fresh air
-        if indoor_aqi <= 50 and outdoor_aqi <= 50:
-            if temp_ok and humidity_ok and wind_moderate:
-                return "OPEN WINDOWS", "Excellent air quality both indoors and outdoors. Enjoy natural ventilation.", metadata
-            elif not temp_ok:
-                return "CLOSE WINDOWS", f"Air quality is good, but temperature ({temp:.1f}°C) is outside comfort range.", metadata
-            elif not humidity_ok:
-                return "CLOSE WINDOWS", f"Air quality is good, but humidity ({humidity:.0f}%) is outside comfort range.", metadata
-            else:
-                return "CLOSE WINDOWS", f"Air quality is good, but wind is too strong ({wind_speed:.1f} m/s).", metadata
+        if high_rain_risk:
+            return ("KEEP CLOSED", f"Rain probability {rain_probability*100:.0f}%. Keep windows closed.", metadata)
         
-        # When outdoor is hazardous or very unhealthy - always close
-        if outdoor_aqi > 200:
-            return "CLOSE WINDOWS", f"Outdoor air is {outdoor_risk}. Keep windows closed and use air purifier.", metadata
+        if outdoor_aqi > 150:
+            return ("KEEP CLOSED", f"Outdoor air is {outdoor_risk}. Keep windows closed.", metadata)
         
-        # When indoor is good but outdoor is moderate/poor - keep closed to maintain good indoor air
-        if indoor_aqi <= 50 and outdoor_aqi > 50:
-            return "KEEP CLOSED (GOOD)", f"Indoor air is excellent ({indoor_risk}). Keep windows closed to maintain quality.", metadata
+        if indoor_aqi <= 50 and outdoor_aqi <= 50 and temp_ok and humidity_ok:
+            return ("OPEN WINDOWS", "Excellent air quality. Safe to ventilate.", metadata)
         
-        # When indoor is moderate/unhealthy and outdoor is significantly better
-        if indoor_aqi > 50 and outdoor_better and temp_ok and humidity_ok:
-            return "OPEN WINDOWS", f"Indoor air is {indoor_risk}, outdoor is {outdoor_risk}. Ventilate to improve indoor quality.", metadata
+        if indoor_aqi > 100 and outdoor_better and temp_ok and humidity_ok:
+            return ("OPEN WINDOWS", f"Indoor air is {indoor_risk}. Outdoor air is cleaner.", metadata)
         
-        # When outdoor is moderately better but weather conditions aren't ideal
-        if outdoor_better:
-            if not temp_ok:
-                return "CLOSE WINDOWS", f"Outdoor air is cleaner, but temperature ({temp:.1f}°C) makes ventilation uncomfortable.", metadata
-            elif not humidity_ok:
-                return "CLOSE WINDOWS", f"Outdoor air is cleaner, but humidity ({humidity:.0f}%) makes ventilation uncomfortable.", metadata
-            elif not wind_moderate:
-                return "CLOSE WINDOWS", f"Outdoor air is cleaner, but wind ({wind_speed:.1f} m/s) is too strong.", metadata
+        if outdoor_better and temp_ok and humidity_ok and wind_moderate:
+            return ("OPEN WINDOWS", "Outdoor conditions favorable for ventilation.", metadata)
         
-        # When indoor is acceptable (moderate) - maintain status
-        if indoor_aqi <= 100:
-            return "KEEP CLOSED (MAINTAIN)", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata
-        
-        # When both are similar quality - close to avoid unnecessary exchange
-        if abs(indoor_aqi - outdoor_aqi) < 15:
-            return "KEEP CLOSED (STABLE)", f"Indoor and outdoor air quality are similar ({indoor_risk}). Keep windows closed.", metadata
-        
-        # Default case - close windows
-        return "KEEP CLOSED", f"Indoor: {indoor_risk}, Outdoor: {outdoor_risk}. Keep windows closed.", metadata
-
-def generate_realistic_training_data():
-    """
-    Generate training data based on real-world research on indoor/outdoor air quality relationships.
-    
-    Based on scientific literature:
-    - Indoor/outdoor PM2.5 ratios typically range from 0.2 to 1.2
-    - Infiltration rates depend on building characteristics, ventilation, and outdoor conditions
-    - Temperature and humidity affect particle deposition and resuspension
-    - Time of day affects occupancy and activities (cooking, cleaning)
-    """
-    
-    X_train, y_train = [], []
-    n_samples = 2000
-    
-    for _ in range(n_samples):
-        # Outdoor conditions based on real-world distributions
-        outdoor_aqi_raw = np.random.choice([1, 2, 3, 4, 5], p=[0.35, 0.40, 0.15, 0.07, 0.03])
-        
-        if outdoor_aqi_raw == 1:  # Good
-            outdoor_aqi = np.random.uniform(10, 50)
-            pm25 = np.random.uniform(5, 25)
-        elif outdoor_aqi_raw == 2:  # Moderate
-            outdoor_aqi = np.random.uniform(50, 100)
-            pm25 = np.random.uniform(25, 50)
-        elif outdoor_aqi_raw == 3:  # Unhealthy for sensitive
-            outdoor_aqi = np.random.uniform(100, 150)
-            pm25 = np.random.uniform(50, 75)
-        elif outdoor_aqi_raw == 4:  # Unhealthy
-            outdoor_aqi = np.random.uniform(150, 200)
-            pm25 = np.random.uniform(75, 100)
-        else:  # Very unhealthy
-            outdoor_aqi = np.random.uniform(200, 300)
-            pm25 = np.random.uniform(100, 150)
-        
-        pm10 = pm25 * np.random.uniform(1.5, 2.5)
-        no2 = np.random.uniform(10, 100)
-        o3 = np.random.uniform(20, 120)
-        co = np.random.uniform(200, 1500)
-        
-        # Weather conditions realistic for tropical/temperate climates
-        temp = np.random.uniform(15, 35)
-        humidity = np.random.uniform(30, 90)
-        wind_speed = np.random.gamma(2, 1.5)  # Realistic wind distribution
-        pressure = np.random.uniform(990, 1030)
-        
-        # Temporal features
-        hour = np.random.randint(0, 24)
-        day_of_week = np.random.randint(0, 7)
-        is_rush_hour = 1 if (7 <= hour <= 9) or (17 <= hour <= 19) else 0
-        is_weekend = 1 if day_of_week >= 5 else 0
-        is_night = 1 if hour < 6 or hour > 22 else 0
-        
-        # Calculate indoor AQI based on realistic physics and building science
-        
-        # Base infiltration rate (0.2-0.7 depending on building tightness)
-        building_tightness = np.random.uniform(0.2, 0.7)
-        
-        # Wind increases infiltration
-        wind_factor = 1 + (wind_speed / 20)
-        
-        # Temperature difference affects stack effect
-        temp_diff_factor = 1 + abs(temp - 24) / 100
-        
-        # Combined infiltration rate
-        infiltration = building_tightness * wind_factor * temp_diff_factor
-        infiltration = min(1.2, max(0.15, infiltration))
-        
-        # Indoor sources contribution
-        # Higher during cooking hours (6-8am, 6-8pm) and cleaning
-        indoor_source = 0
-        if 6 <= hour <= 8 or 18 <= hour <= 20:
-            indoor_source = np.random.uniform(5, 25)  # Cooking emissions
-        elif 9 <= hour <= 17 and not is_weekend:
-            indoor_source = np.random.uniform(0, 8)  # Lower during work hours
-        else:
-            indoor_source = np.random.uniform(0, 12)  # General activity
-        
-        # Deposition and removal
-        # Higher humidity increases particle deposition
-        removal_rate = 0.05 + (humidity / 1000)
-        
-        # Natural ventilation when windows open (assumed open when outdoor is much better)
-        ventilation_bonus = 0
-        if outdoor_aqi < 60 and temp > 20 and temp < 30:
-            if np.random.random() < 0.3:  # 30% chance windows are open
-                ventilation_bonus = -np.random.uniform(5, 15)
-        
-        # Calculate indoor AQI
-        # I/O ratio based on infiltration, plus indoor sources, minus removal, plus ventilation
-        indoor_aqi = (pm25 * infiltration) + indoor_source - (pm25 * removal_rate) + ventilation_bonus
-        
-        # Add realistic noise
-        indoor_aqi += np.random.normal(0, 3)
-        
-        # Ensure reasonable bounds
-        indoor_aqi = max(5, min(400, indoor_aqi))
-        
-        # Feature engineering
-        temp_humidity_interaction = temp * humidity / 100.0
-        wind_aqi_interaction = wind_speed * outdoor_aqi
-        pollutant_mix = pm25 + 0.5 * pm10 + 0.3 * no2
-        hour_sin = np.sin(2 * np.pi * hour / 24)
-        hour_cos = np.cos(2 * np.pi * hour / 24)
-        
-        features = np.array([
-            outdoor_aqi, pm25, pm10, no2, o3, co,
-            temp, humidity, wind_speed, pressure,
-            hour, day_of_week, is_rush_hour, is_weekend, is_night,
-            temp_humidity_interaction, wind_aqi_interaction, pollutant_mix,
-            hour_sin, hour_cos
-        ], dtype=np.float32)
-        
-        X_train.append(features)
-        y_train.append(indoor_aqi)
-    
-    return np.array(X_train, dtype=np.float32), np.array(y_train, dtype=np.float32)
+        return ("KEEP CLOSED", f"Indoor: {indoor_risk}. Maintain current conditions.", metadata)
 
 class IAQSystem:
     def __init__(self, api_key: str, lat: float, lon: float):
@@ -406,24 +353,34 @@ class IAQSystem:
         self._initialize_models()
         
     def _initialize_models(self):
-        """Initialize models with realistic training data based on building science research"""
-        print("Initializing ML models with realistic building physics data...")
-        X_train, y_train = generate_realistic_training_data()
+        print("🔧 Initializing IAQ models...")
+        n = 500
+        X, y = [], []
+        for _ in range(n):
+            oa = np.random.uniform(10, 150)
+            ws = np.random.uniform(0, 10)
+            f = np.random.rand(20)
+            f[0], f[8] = oa, ws
+            X.append(f)
+            y.append(oa * min(0.7, 0.3 + 0.05 * ws) + np.random.uniform(0, 10))
         
-        print(f"Training Random Forest Regressor on {len(X_train)} samples...")
-        self.regressor.train(X_train, y_train)
-        
-        print(f"Training Isolation Forest Anomaly Detector on {len(X_train)} samples...")
-        self.anomaly_detector.train(X_train)
-        
-        print("ML models initialized successfully!")
+        X = np.array(X, dtype=np.float32)
+        y = np.array(y, dtype=np.float32)
+        self.regressor.train(X, y)
+        self.anomaly_detector.train(X)
+        print("✅ IAQ models ready")
         
     def update(self) -> Optional[Dict]:
         timestamp = datetime.now()
+        
+        print(f"\n🔄 Updating data for {current_city}...")
+        
         aqi_data = fetch_outdoor_aqi(self.lat, self.lon, self.api_key)
         weather_data = fetch_weather(self.lat, self.lon, self.api_key)
+        forecast_data = fetch_24h_forecast(self.lat, self.lon, self.api_key)
         
-        if aqi_data is None or weather_data is None:
+        if not aqi_data or not weather_data:
+            print("❌ Failed to fetch basic data")
             return None
         
         features = engineer_features(aqi_data, weather_data, timestamp)
@@ -434,10 +391,39 @@ class IAQSystem:
         is_anomaly = self.anomaly_detector.detect(features)
         outdoor_aqi = float(aqi_data['aqi'] * 50)
         
+        # Rain prediction
+        rain_probability = 0.0
+        rain_risk_curve = []
+        
+        if rain_model and forecast_data:
+            try:
+                rain_features = extract_rain_features(weather_data, forecast_data)
+                if rain_features is not None:
+                    rain_probability = float(rain_model.predict_proba([rain_features])[0][1])
+                    rain_risk_curve = generate_rain_risk_curve(forecast_data, rain_probability)
+                    print(f"🌧️  Rain probability: {rain_probability*100:.1f}%")
+                else:
+                    print("⚠️  Could not extract rain features")
+            except Exception as e:
+                print(f"❌ Rain prediction error: {e}")
+        
+        # Fallback: generate basic curve if prediction failed
+        if not rain_risk_curve:
+            print("⚠️  Using fallback rain curve")
+            base_risk = (weather_data['humidity'] - 50) / 50 * 100
+            base_risk = max(10, min(80, base_risk))
+            rain_risk_curve = [
+                {'hour': i*3, 'risk': round(base_risk + np.random.uniform(-10, 10), 1)}
+                for i in range(8)
+            ]
+        
         recommendation, explanation, metadata = self.recommender.recommend(
             indoor_aqi, outdoor_aqi, weather_data['temp'],
-            weather_data['humidity'], weather_data['wind_speed'], is_anomaly
+            weather_data['humidity'], weather_data['wind_speed'],
+            is_anomaly, rain_probability
         )
+        
+        print(f"✅ Update complete: Indoor AQI={indoor_aqi:.0f}, Rain={rain_probability*100:.1f}%")
         
         return {
             'outdoor_aqi': float(outdoor_aqi),
@@ -448,6 +434,8 @@ class IAQSystem:
             'indoor_risk': str(metadata['indoor_risk']),
             'outdoor_risk': str(metadata['outdoor_risk']),
             'is_anomaly': bool(is_anomaly),
+            'rain_probability_24h': float(rain_probability),
+            'rain_risk_curve': rain_risk_curve,
             'recommendation': str(recommendation),
             'explanation': str(explanation),
             'timestamp': timestamp.isoformat(),
@@ -458,17 +446,23 @@ system = IAQSystem(API_KEY, LATITUDE, LONGITUDE)
 
 def background_updater():
     global latest_data
+    time.sleep(5)  # Initial delay
     while True:
         try:
             data = system.update()
             if data:
                 latest_data = data
         except Exception as e:
-            pass
+            print(f"Background update error: {e}")
         time.sleep(60)
 
 thread = threading.Thread(target=background_updater, daemon=True)
 thread.start()
+
+# Perform initial update
+initial_data = system.update()
+if initial_data:
+    latest_data = initial_data
 
 @app.route('/')
 def index():
@@ -480,18 +474,13 @@ def get_data():
 
 @app.route('/api/cities')
 def get_cities():
-    return jsonify({
-        'cities': list(CITIES.keys()),
-        'current': current_city
-    })
+    return jsonify({'cities': list(CITIES.keys()), 'current': current_city})
 
 @app.route('/api/change-city', methods=['POST'])
 def change_city():
     global current_city, LATITUDE, LONGITUDE, system
     
-    data = request.json
-    city = data.get('city')
-    
+    city = request.json.get('city')
     if city not in CITIES:
         return jsonify({'error': 'Invalid city'}), 400
     
@@ -500,8 +489,8 @@ def change_city():
     LONGITUDE = CITIES[city]['lon']
     
     system = IAQSystem(API_KEY, LATITUDE, LONGITUDE)
-    
     updated_data = system.update()
+    
     if updated_data:
         global latest_data
         latest_data = updated_data
@@ -518,6 +507,11 @@ def refresh():
         return jsonify(data)
     return jsonify({'error': 'Failed to fetch data'}), 500
 
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy', 'rain_model_loaded': rain_model is not None})
+
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
+    print(f"🌐 Starting server on port {port}")
     app.run(debug=False, host='0.0.0.0', port=port)
