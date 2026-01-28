@@ -2,18 +2,28 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 import numpy as np
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple
 from sklearn.ensemble import RandomForestRegressor, IsolationForest
 import threading
 import time
 import os
 import pickle
+import logging
+import sqlite3
 
-app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__)
 CORS(app)
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
+DB_PATH = "monitoring.db"
+
+api_calls_today = 0
+api_calls_date = datetime.now().date()
+API_CALL_LIMIT = 950
 
 CITIES = {
     "Colombo": {"lat": 6.9271, "lon": 79.8612},
@@ -44,244 +54,217 @@ LATITUDE = CITIES[current_city]['lat']
 LONGITUDE = CITIES[current_city]['lon']
 
 latest_data = {
-    'outdoor_aqi': 0,
-    'temp': 0,
-    'humidity': 0,
-    'wind_speed': 0,
-    'indoor_aqi': 0,
-    'indoor_risk': 'Unknown',
-    'outdoor_risk': 'Unknown',
-    'is_anomaly': False,
-    'rain_probability_24h': 0.0,
-    'rain_risk_curve': [],
-    'recommendation': 'Loading...',
-    'explanation': 'Fetching data...',
-    'timestamp': datetime.now().isoformat(),
-    'city': current_city
+    'outdoor_aqi': 0, 'temp': 0, 'humidity': 0, 'wind_speed': 0, 'pressure': 0, 'clouds': 0,
+    'indoor_aqi': 0, 'indoor_risk': 'Unknown', 'outdoor_risk': 'Unknown', 'is_anomaly': False,
+    'rain_probability_24h': 0.0, 'rain_risk_curve': [], 'recommendation': 'Loading...',
+    'explanation': 'Fetching data...', 'timestamp': datetime.now().isoformat(), 'city': current_city
 }
 
-# Load rain model
 rain_model = None
 try:
     with open('rain_model.pkl', 'rb') as f:
         rain_model = pickle.load(f)
-        print("✅ Rain model loaded successfully")
-except Exception as e:
-    print(f"⚠️ Rain model not found: {e}")
+        logger.info("Rain model loaded")
+except:
+    logger.warning("Rain model not found - run training first")
 
-def fetch_outdoor_aqi(lat: float, lon: float, api_key: str) -> Optional[Dict]:
+def init_database():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS predictions
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, city TEXT NOT NULL,
+                  predicted_rain_prob REAL, outdoor_aqi REAL, temp REAL, humidity REAL, pressure REAL,
+                  clouds REAL, wind_speed REAL, indoor_aqi REAL, recommendation TEXT,
+                  actual_rain INTEGER DEFAULT NULL, verification_time TEXT DEFAULT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS api_usage
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, call_count INTEGER NOT NULL,
+                  UNIQUE(date))''')
+    conn.commit()
+    conn.close()
+
+init_database()
+
+def can_make_api_call():
+    global api_calls_today, api_calls_date
+    today = datetime.now().date()
+    if today != api_calls_date:
+        api_calls_date = today
+        api_calls_today = 0
+    return api_calls_today < API_CALL_LIMIT
+
+def log_api_call():
+    global api_calls_today
+    api_calls_today += 1
+
+def log_prediction(data: Dict):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
+                     humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
+                   data['temp'], data['humidity'], data['pressure'], data['clouds'],
+                   data['wind_speed'], data['indoor_aqi'], data['recommendation']))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error logging: {e}")
+
+def fetch_outdoor_aqi(lat, lon, api_key):
+    if not can_make_api_call():
+        return None
     url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={api_key}"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
+        log_api_call()
         data = response.json()
-        
         if 'list' not in data or len(data['list']) == 0:
             return None
-            
         current = data['list'][0]
-        components = current['main']
-        pollutants = current.get('components', {})
-        
         return {
-            'aqi': components.get('aqi', 1),
-            'pm25': pollutants.get('pm2_5', 0),
-            'pm10': pollutants.get('pm10', 0),
-            'no2': pollutants.get('no2', 0),
-            'o3': pollutants.get('o3', 0),
-            'co': pollutants.get('co', 0)
+            'aqi': current['main'].get('aqi', 1), 'pm25': current.get('components', {}).get('pm2_5', 0),
+            'pm10': current.get('components', {}).get('pm10', 0), 'no2': current.get('components', {}).get('no2', 0),
+            'o3': current.get('components', {}).get('o3', 0), 'co': current.get('components', {}).get('co', 0)
         }
-    except Exception as e:
-        print(f"AQI error: {e}")
+    except:
         return None
 
-def fetch_weather(lat: float, lon: float, api_key: str) -> Optional[Dict]:
+def fetch_weather(lat, lon, api_key):
+    if not can_make_api_call():
+        return None
     url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=metric"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
+        log_api_call()
         data = response.json()
-        
         return {
-            'temp': data['main'].get('temp', 20),
-            'humidity': data['main'].get('humidity', 50),
-            'wind_speed': data['wind'].get('speed', 0),
-            'pressure': data['main'].get('pressure', 1013),
+            'temp': data['main'].get('temp', 20), 'humidity': data['main'].get('humidity', 50),
+            'wind_speed': data['wind'].get('speed', 0), 'pressure': data['main'].get('pressure', 1013),
             'clouds': data.get('clouds', {}).get('all', 50)
         }
-    except Exception as e:
-        print(f"Weather error: {e}")
+    except:
         return None
 
-def fetch_24h_forecast(lat: float, lon: float, api_key: str) -> Optional[list]:
+def fetch_24h_forecast(lat, lon, api_key):
+    if not can_make_api_call():
+        return None
     url = f"http://api.openweathermap.org/data/2.5/forecast?lat={lat}&lon={lon}&appid={api_key}&units=metric"
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=30)
         response.raise_for_status()
-        data = response.json()
-        
-        forecast_list = data.get('list', [])[:8]  # Next 24 hours (8 x 3-hour intervals)
-        return forecast_list if forecast_list else None
-    except Exception as e:
-        print(f"Forecast error: {e}")
+        log_api_call()
+        return response.json().get('list', [])[:8]
+    except:
         return None
 
-def calculate_dew_point(temp: float, humidity: float) -> float:
-    """Calculate dew point temperature"""
-    return temp - ((100 - humidity) / 5.0)
+def calculate_dew_point(temp, humidity):
+    a, b = 17.27, 237.7
+    try:
+        alpha = ((a * temp) / (b + temp)) + np.log(humidity / 100.0)
+        return (b * alpha) / (a - alpha)
+    except:
+        return temp - ((100 - humidity) / 5.0)
 
-def extract_rain_features(weather: Dict, forecast: list) -> Optional[np.ndarray]:
-    """Extract features for rain prediction from current weather and 24h forecast"""
+def extract_rain_features(weather, forecast):
     if not weather or not forecast:
         return None
-    
     try:
-        temp = weather['temp']
-        humidity = weather['humidity']
-        pressure = weather['pressure']
-        wind_speed = weather['wind_speed']
-        clouds = weather['clouds']
+        temp = float(weather['temp'])
+        humidity = float(weather['humidity'])
+        pressure = float(weather['pressure'])
+        wind_speed = float(weather['wind_speed'])
+        clouds = float(weather['clouds'])
         dew_point = calculate_dew_point(temp, humidity)
         
-        # Extract forecast statistics
         humidities = [f['main']['humidity'] for f in forecast]
         pressures = [f['main']['pressure'] for f in forecast]
         cloud_covers = [f.get('clouds', {}).get('all', 50) for f in forecast]
         rains = [f.get('rain', {}).get('3h', 0) for f in forecast]
         
-        mean_humidity_24h = np.mean(humidities)
-        max_humidity_24h = np.max(humidities)
-        mean_pressure_24h = np.mean(pressures)
-        pressure_trend_24h = pressures[-1] - pressures[0] if len(pressures) > 1 else 0
-        mean_clouds_24h = np.mean(cloud_covers)
-        max_clouds_24h = np.max(cloud_covers)
-        total_rain_24h = sum(rains)
-        rain_steps_24h = sum(1 for r in rains if r > 0)
-        
-        features = np.array([
+        return np.array([
             temp, humidity, pressure, wind_speed, clouds, dew_point,
-            mean_humidity_24h, max_humidity_24h, mean_pressure_24h, pressure_trend_24h,
-            mean_clouds_24h, max_clouds_24h, total_rain_24h, rain_steps_24h
+            float(np.mean(humidities)), float(np.max(humidities)), float(np.mean(pressures)),
+            float(pressures[-1] - pressures[0]) if len(pressures) > 1 else 0.0,
+            float(np.mean(cloud_covers)), float(np.max(cloud_covers)),
+            float(sum(rains)), int(sum(1 for r in rains if r > 0))
         ], dtype=np.float32)
-        
-        return features
-    except Exception as e:
-        print(f"Feature extraction error: {e}")
+    except:
         return None
 
-def generate_rain_risk_curve(forecast: list, ml_probability: float) -> list:
-    """Generate hour-by-hour rain risk curve from forecast data"""
+def generate_rain_risk_curve(forecast, ml_probability):
     if not forecast:
         return []
-    
     risk_curve = []
-    
     for i, f in enumerate(forecast):
-        hour = i * 3  # 3-hour intervals
-        
+        hour = i * 3
         try:
-            humidity = f['main']['humidity']
-            pressure = f['main']['pressure']
+            hum = f['main']['humidity']
+            pres = f['main']['pressure']
             clouds = f.get('clouds', {}).get('all', 50)
             has_rain = f.get('rain', {}).get('3h', 0) > 0
-            
-            # Calculate risk score based on conditions
             risk = 0.0
-            
-            # Humidity contribution (0-35%)
-            if humidity > 85:
-                risk += 30
-            elif humidity > 75:
-                risk += 20
-            elif humidity > 65:
-                risk += 10
-            
-            # Pressure contribution (0-25%)
-            if pressure < 1005:
-                risk += 20
-            elif pressure < 1010:
-                risk += 10
-            
-            # Cloud cover contribution (0-25%)
+            if hum > 85: risk += 30
+            elif hum > 75: risk += 20
+            elif hum > 65: risk += 10
+            if pres < 1005: risk += 20
+            elif pres < 1010: risk += 10
             risk += (clouds / 100) * 25
-            
-            # Actual rain detection (adds 20%)
-            if has_rain:
-                risk += 20
-            
-            # Blend with ML model prediction
-            risk = (risk * 0.6) + (ml_probability * 100 * 0.4)
-            
+            if has_rain: risk += 20
+            risk = (risk * 0.5) + (ml_probability * 100 * 0.5)
             risk = max(0, min(100, risk))
             risk_curve.append({'hour': hour, 'risk': round(risk, 1)})
-        except Exception as e:
-            print(f"Risk curve error at hour {hour}: {e}")
+        except:
             risk_curve.append({'hour': hour, 'risk': round(ml_probability * 100, 1)})
-    
     return risk_curve
 
-def engineer_features(aqi_data: Optional[Dict], weather_data: Optional[Dict], timestamp: datetime) -> Optional[np.ndarray]:
+def engineer_features(aqi_data, weather_data, timestamp):
     if aqi_data is None or weather_data is None:
         return None
-    
     hour = timestamp.hour
     day_of_week = timestamp.weekday()
-    
-    is_rush_hour = 1 if (7 <= hour <= 9) or (17 <= hour <= 19) else 0
-    is_weekend = 1 if day_of_week >= 5 else 0
-    is_night = 1 if hour < 6 or hour > 22 else 0
-    
-    features = np.array([
+    return np.array([
         aqi_data['aqi'], aqi_data['pm25'], aqi_data['pm10'], aqi_data['no2'], aqi_data['o3'], aqi_data['co'],
         weather_data['temp'], weather_data['humidity'], weather_data['wind_speed'], weather_data['pressure'],
-        hour, day_of_week, is_rush_hour, is_weekend, is_night,
-        weather_data['temp'] * weather_data['humidity'] / 100.0,
-        weather_data['wind_speed'] * aqi_data['aqi'],
+        hour, day_of_week, 1 if (7 <= hour <= 9) or (17 <= hour <= 19) else 0,
+        1 if day_of_week >= 5 else 0, 1 if hour < 6 or hour > 22 else 0,
+        weather_data['temp'] * weather_data['humidity'] / 100.0, weather_data['wind_speed'] * aqi_data['aqi'],
         aqi_data['pm25'] + 0.5 * aqi_data['pm10'] + 0.3 * aqi_data['no2'],
-        np.sin(2 * np.pi * hour / 24),
-        np.cos(2 * np.pi * hour / 24)
+        np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24)
     ], dtype=np.float32)
-    
-    return features
 
 class IAQRegressor:
     def __init__(self):
-        self.model = RandomForestRegressor(
-            n_estimators=30, max_depth=8, min_samples_split=15,
-            min_samples_leaf=8, max_features='sqrt', n_jobs=1, random_state=42
-        )
+        self.model = RandomForestRegressor(n_estimators=30, max_depth=8, min_samples_split=15,
+                                          min_samples_leaf=8, max_features='sqrt', n_jobs=1, random_state=42)
         self.is_trained = False
     
-    def train(self, X: np.ndarray, y: np.ndarray):
+    def train(self, X, y):
         self.model.fit(X, y)
         self.is_trained = True
     
-    def predict(self, X: np.ndarray) -> float:
+    def predict(self, X):
         if not self.is_trained:
-            return self._fallback_prediction(X)
+            outdoor_aqi = X[0]
+            wind_speed = X[8]
+            infiltration = min(0.7, 0.3 + 0.05 * wind_speed)
+            return float(max(1.0, min(500.0, outdoor_aqi * infiltration + 5.0)))
         if X.ndim == 1:
             X = X.reshape(1, -1)
         return float(max(1.0, min(500.0, self.model.predict(X)[0])))
-    
-    def _fallback_prediction(self, X: np.ndarray) -> float:
-        outdoor_aqi = X[0]
-        wind_speed = X[8]
-        infiltration = min(0.7, 0.3 + 0.05 * wind_speed)
-        return float(max(1.0, min(500.0, outdoor_aqi * infiltration + 5.0)))
 
 class IAQAnomalyDetector:
     def __init__(self):
-        self.model = IsolationForest(
-            n_estimators=30, max_samples=128, contamination=0.1,
-            random_state=42, n_jobs=1
-        )
+        self.model = IsolationForest(n_estimators=30, max_samples=128, contamination=0.1, random_state=42, n_jobs=1)
         self.is_trained = False
     
-    def train(self, X: np.ndarray):
+    def train(self, X):
         self.model.fit(X)
         self.is_trained = True
     
-    def detect(self, X: np.ndarray) -> bool:
+    def detect(self, X):
         if not self.is_trained:
             return bool(X[0] > 150 or X[1] > 55)
         if X.ndim == 1:
@@ -290,7 +273,7 @@ class IAQAnomalyDetector:
 
 class WindowRecommender:
     @staticmethod
-    def get_health_risk_band(aqi: float) -> str:
+    def get_health_risk_band(aqi):
         if aqi <= 50: return "Good"
         elif aqi <= 100: return "Moderate"
         elif aqi <= 150: return "Unhealthy for Sensitive Groups"
@@ -299,51 +282,38 @@ class WindowRecommender:
         else: return "Hazardous"
     
     @staticmethod
-    def recommend(indoor_aqi: float, outdoor_aqi: float, temp: float,
-                  humidity: float, wind_speed: float, is_anomaly: bool,
-                  rain_probability: float) -> Tuple[str, str, Dict]:
-        
+    def recommend(indoor_aqi, outdoor_aqi, temp, humidity, wind_speed, is_anomaly, rain_probability):
         temp_ok = 15 <= temp <= 32
         humidity_ok = 35 <= humidity <= 80
         wind_moderate = wind_speed < 8.0
         high_rain_risk = rain_probability > 0.5
-        
         indoor_risk = WindowRecommender.get_health_risk_band(indoor_aqi)
         outdoor_risk = WindowRecommender.get_health_risk_band(outdoor_aqi)
         outdoor_better = outdoor_aqi < indoor_aqi - 10
         
         metadata = {
-            'indoor_risk': indoor_risk,
-            'outdoor_risk': outdoor_risk,
-            'outdoor_better': outdoor_better,
-            'temp_ok': temp_ok,
-            'humidity_ok': humidity_ok,
-            'wind_moderate': wind_moderate,
-            'is_anomaly': is_anomaly
+            'indoor_risk': indoor_risk, 'outdoor_risk': outdoor_risk, 'outdoor_better': outdoor_better,
+            'temp_ok': temp_ok, 'humidity_ok': humidity_ok, 'wind_moderate': wind_moderate, 'is_anomaly': is_anomaly
         }
         
         if is_anomaly:
             return ("KEEP CLOSED", "Anomaly detected. Keep windows closed for safety.", metadata)
-        
         if high_rain_risk:
             return ("KEEP CLOSED", f"Rain probability {rain_probability*100:.0f}%. Keep windows closed.", metadata)
-        
         if outdoor_aqi > 150:
             return ("KEEP CLOSED", f"Outdoor air is {outdoor_risk}. Keep windows closed.", metadata)
-        
         if indoor_aqi <= 50 and outdoor_aqi <= 50 and temp_ok and humidity_ok:
             return ("OPEN WINDOWS", "Excellent air quality. Safe to ventilate.", metadata)
-        
         if indoor_aqi > 100 and outdoor_better and temp_ok and humidity_ok:
             return ("OPEN WINDOWS", f"Indoor air is {indoor_risk}. Outdoor air is cleaner.", metadata)
-        
         if outdoor_better and temp_ok and humidity_ok and wind_moderate:
             return ("OPEN WINDOWS", "Outdoor conditions favorable for ventilation.", metadata)
-        
-        return ("KEEP CLOSED", f"Indoor: {indoor_risk}. Maintain current conditions.", metadata)
+        if indoor_aqi <= 50:
+            return ("ALL GOOD", f"Indoor air is {indoor_risk}. Maintain current conditions.", metadata)
+        return ("KEEP CLOSED", f"Outdoor air not optimal. Indoor: {indoor_risk}.", metadata)
 
 class IAQSystem:
-    def __init__(self, api_key: str, lat: float, lon: float):
+    def __init__(self, api_key, lat, lon):
         self.api_key = api_key
         self.lat = lat
         self.lon = lon
@@ -353,7 +323,6 @@ class IAQSystem:
         self._initialize_models()
         
     def _initialize_models(self):
-        print("🔧 Initializing IAQ models...")
         n = 500
         X, y = [], []
         for _ in range(n):
@@ -363,24 +332,20 @@ class IAQSystem:
             f[0], f[8] = oa, ws
             X.append(f)
             y.append(oa * min(0.7, 0.3 + 0.05 * ws) + np.random.uniform(0, 10))
-        
         X = np.array(X, dtype=np.float32)
         y = np.array(y, dtype=np.float32)
         self.regressor.train(X, y)
         self.anomaly_detector.train(X)
-        print("✅ IAQ models ready")
         
-    def update(self) -> Optional[Dict]:
+    def update(self):
         timestamp = datetime.now()
-        
-        print(f"\n🔄 Updating data for {current_city}...")
+        logger.info(f"Updating {current_city} (API: {api_calls_today}/{API_CALL_LIMIT})")
         
         aqi_data = fetch_outdoor_aqi(self.lat, self.lon, self.api_key)
         weather_data = fetch_weather(self.lat, self.lon, self.api_key)
         forecast_data = fetch_24h_forecast(self.lat, self.lon, self.api_key)
         
         if not aqi_data or not weather_data:
-            print("❌ Failed to fetch basic data")
             return None
         
         features = engineer_features(aqi_data, weather_data, timestamp)
@@ -391,7 +356,6 @@ class IAQSystem:
         is_anomaly = self.anomaly_detector.detect(features)
         outdoor_aqi = float(aqi_data['aqi'] * 50)
         
-        # Rain prediction
         rain_probability = 0.0
         rain_risk_curve = []
         
@@ -399,67 +363,52 @@ class IAQSystem:
             try:
                 rain_features = extract_rain_features(weather_data, forecast_data)
                 if rain_features is not None:
-                    rain_probability = float(rain_model.predict_proba([rain_features])[0][1])
+                    rain_proba_array = rain_model.predict_proba([rain_features])
+                    rain_probability = float(rain_proba_array[0][1])
                     rain_risk_curve = generate_rain_risk_curve(forecast_data, rain_probability)
-                    print(f"🌧️  Rain probability: {rain_probability*100:.1f}%")
-                else:
-                    print("⚠️  Could not extract rain features")
-            except Exception as e:
-                print(f"❌ Rain prediction error: {e}")
+            except:
+                pass
         
-        # Fallback: generate basic curve if prediction failed
         if not rain_risk_curve:
-            print("⚠️  Using fallback rain curve")
-            base_risk = (weather_data['humidity'] - 50) / 50 * 100
-            base_risk = max(10, min(80, base_risk))
-            rain_risk_curve = [
-                {'hour': i*3, 'risk': round(base_risk + np.random.uniform(-10, 10), 1)}
-                for i in range(8)
-            ]
+            base_risk = max(10, min(60, (weather_data['humidity'] - 50) * 1.2))
+            rain_risk_curve = [{'hour': i*3, 'risk': round(base_risk + np.random.uniform(-8, 8), 1)} for i in range(8)]
         
         recommendation, explanation, metadata = self.recommender.recommend(
-            indoor_aqi, outdoor_aqi, weather_data['temp'],
-            weather_data['humidity'], weather_data['wind_speed'],
-            is_anomaly, rain_probability
+            indoor_aqi, outdoor_aqi, weather_data['temp'], weather_data['humidity'],
+            weather_data['wind_speed'], is_anomaly, rain_probability
         )
         
-        print(f"✅ Update complete: Indoor AQI={indoor_aqi:.0f}, Rain={rain_probability*100:.1f}%")
-        
-        return {
-            'outdoor_aqi': float(outdoor_aqi),
-            'temp': float(weather_data['temp']),
-            'humidity': float(weather_data['humidity']),
-            'wind_speed': float(weather_data['wind_speed']),
-            'indoor_aqi': float(indoor_aqi),
-            'indoor_risk': str(metadata['indoor_risk']),
-            'outdoor_risk': str(metadata['outdoor_risk']),
-            'is_anomaly': bool(is_anomaly),
-            'rain_probability_24h': float(rain_probability),
-            'rain_risk_curve': rain_risk_curve,
-            'recommendation': str(recommendation),
-            'explanation': str(explanation),
-            'timestamp': timestamp.isoformat(),
-            'city': current_city
+        result = {
+            'outdoor_aqi': float(outdoor_aqi), 'temp': float(weather_data['temp']),
+            'humidity': float(weather_data['humidity']), 'wind_speed': float(weather_data['wind_speed']),
+            'pressure': float(weather_data['pressure']), 'clouds': float(weather_data['clouds']),
+            'indoor_aqi': float(indoor_aqi), 'indoor_risk': str(metadata['indoor_risk']),
+            'outdoor_risk': str(metadata['outdoor_risk']), 'is_anomaly': bool(is_anomaly),
+            'rain_probability_24h': float(rain_probability), 'rain_risk_curve': rain_risk_curve,
+            'recommendation': str(recommendation), 'explanation': str(explanation),
+            'timestamp': timestamp.isoformat(), 'city': current_city
         }
+        
+        log_prediction(result)
+        return result
 
 system = IAQSystem(API_KEY, LATITUDE, LONGITUDE)
 
 def background_updater():
     global latest_data
-    time.sleep(5)  # Initial delay
+    time.sleep(10)
     while True:
         try:
             data = system.update()
             if data:
                 latest_data = data
         except Exception as e:
-            print(f"Background update error: {e}")
-        time.sleep(60)
+            logger.error(f"Update error: {e}")
+        time.sleep(600)
 
 thread = threading.Thread(target=background_updater, daemon=True)
 thread.start()
 
-# Perform initial update
 initial_data = system.update()
 if initial_data:
     latest_data = initial_data
@@ -467,6 +416,10 @@ if initial_data:
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/monitor')
+def monitor():
+    return render_template('monitor.html')
 
 @app.route('/api/data')
 def get_data():
@@ -476,27 +429,143 @@ def get_data():
 def get_cities():
     return jsonify({'cities': list(CITIES.keys()), 'current': current_city})
 
+@app.route('/api/stats')
+def get_stats():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        today = str(datetime.now().date())
+        c.execute("SELECT COUNT(*) FROM predictions")
+        total = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
+        verified = c.fetchone()[0]
+        conn.close()
+        return jsonify({
+            'api_calls_today': api_calls_today, 'api_limit': API_CALL_LIMIT,
+            'total_predictions': total, 'verified_predictions': verified
+        })
+    except:
+        return jsonify({'error': 'Stats error'}), 500
+
+@app.route('/api/predictions/recent')
+def get_recent():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        two_days = (datetime.now() - timedelta(hours=48)).isoformat()
+        c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
+                     clouds, recommendation, actual_rain, verification_time
+                     FROM predictions WHERE timestamp > ? ORDER BY timestamp DESC LIMIT 50''', (two_days,))
+        predictions = []
+        for row in c.fetchall():
+            dt = datetime.fromisoformat(row[1])
+            hours_ago = (datetime.now() - dt).total_seconds() / 3600
+            predictions.append({
+                'id': row[0], 'timestamp': row[1], 'display_time': dt.strftime('%Y-%m-%d %H:%M'),
+                'hours_ago': round(hours_ago, 1), 'city': row[2], 'rain_probability': round(row[3] * 100, 1),
+                'temp': round(row[4], 1), 'humidity': round(row[5]), 'clouds': round(row[6]),
+                'recommendation': row[7], 'actual_rain': row[8], 'verified': row[8] is not None,
+                'ready_to_verify': hours_ago >= 24 and row[8] is None
+            })
+        conn.close()
+        return jsonify({'predictions': predictions})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictions/verify', methods=['POST'])
+def verify():
+    try:
+        data = request.json
+        pred_id = data.get('id')
+        actual_rain = data.get('actual_rain')
+        
+        if pred_id is None or actual_rain not in [0, 1]:
+            return jsonify({'error': 'Invalid data'}), 400
+        
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT predicted_rain_prob FROM predictions WHERE id = ?', (pred_id,))
+        result = c.fetchone()
+        
+        if not result:
+            conn.close()
+            return jsonify({'error': 'Not found'}), 404
+        
+        predicted_prob = result[0]
+        verification_time = datetime.now().isoformat()
+        c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
+                  (actual_rain, verification_time, pred_id))
+        conn.commit()
+        conn.close()
+        
+        predicted_class = 1 if predicted_prob > 0.5 else 0
+        correct = predicted_class == actual_rain
+        
+        return jsonify({
+            'success': True, 'correct': correct, 'predicted_class': predicted_class,
+            'predicted_prob': round(predicted_prob * 100, 1), 'actual_rain': actual_rain
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/performance')
+def get_performance():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT predicted_rain_prob, actual_rain FROM predictions WHERE actual_rain IS NOT NULL')
+        results = c.fetchall()
+        
+        if len(results) < 5:
+            conn.close()
+            return jsonify({'insufficient_data': True, 'verified_count': len(results), 'minimum_required': 5})
+        
+        tp = fp = tn = fn = 0
+        for pred_prob, actual in results:
+            predicted = 1 if pred_prob > 0.5 else 0
+            if predicted == 1 and actual == 1: tp += 1
+            elif predicted == 1 and actual == 0: fp += 1
+            elif predicted == 0 and actual == 0: tn += 1
+            else: fn += 1
+        
+        total = len(results)
+        accuracy = (tp + tn) / total if total > 0 else 0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        week_ago = str((datetime.now() - timedelta(days=7)).date())
+        c.execute("SELECT date, call_count FROM api_usage WHERE date >= ? ORDER BY date DESC", (week_ago,))
+        api_usage = [{'date': row[0], 'calls': row[1]} for row in c.fetchall()]
+        
+        conn.close()
+        
+        return jsonify({
+            'verified_count': total, 'accuracy': round(accuracy * 100, 1),
+            'precision': round(precision * 100, 1), 'recall': round(recall * 100, 1),
+            'f1_score': round(f1 * 100, 1),
+            'confusion_matrix': {'true_positives': tp, 'false_positives': fp, 'true_negatives': tn, 'false_negatives': fn},
+            'api_usage': api_usage, 'ready_for_retrain': total >= 50
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/change-city', methods=['POST'])
 def change_city():
     global current_city, LATITUDE, LONGITUDE, system
-    
     city = request.json.get('city')
     if city not in CITIES:
         return jsonify({'error': 'Invalid city'}), 400
-    
     current_city = city
     LATITUDE = CITIES[city]['lat']
     LONGITUDE = CITIES[city]['lon']
-    
     system = IAQSystem(API_KEY, LATITUDE, LONGITUDE)
-    updated_data = system.update()
-    
-    if updated_data:
+    data = system.update()
+    if data:
         global latest_data
-        latest_data = updated_data
-        return jsonify(updated_data)
-    
-    return jsonify({'error': 'Failed to fetch data'}), 500
+        latest_data = data
+        return jsonify(data)
+    return jsonify({'error': 'Failed'}), 500
 
 @app.route('/api/refresh')
 def refresh():
@@ -505,13 +574,16 @@ def refresh():
         global latest_data
         latest_data = data
         return jsonify(data)
-    return jsonify({'error': 'Failed to fetch data'}), 500
+    return jsonify({'error': 'Failed'}), 500
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'healthy', 'rain_model_loaded': rain_model is not None})
+    return jsonify({
+        'status': 'healthy', 'rain_model_loaded': rain_model is not None,
+        'current_city': current_city, 'api_calls_today': api_calls_today
+    })
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
-    print(f"🌐 Starting server on port {port}")
+    logger.info(f"Starting on port {port}")
     app.run(debug=False, host='0.0.0.0', port=port)

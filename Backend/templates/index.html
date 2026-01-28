@@ -4,239 +4,247 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Air Quality Monitoring System</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Open+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         :root {
-            --navy-primary: #1e3a5f;
-            --navy-secondary: #2c5282;
-            --slate-dark: #1a202c;
-            --slate: #2d3748;
-            --gray: #718096;
-            --border: #cbd5e0;
-            --bg-primary: #f7fafc;
-            --bg-secondary: #edf2f7;
-            --white: #ffffff;
-            --green-accent: #38a169;
-            --red-accent: #e53e3e;
+            --navy: #0F172A;
+            --slate: #334155;
+            --gray: #64748B;
+            --border: #E2E8F0;
+            --bg: #F8FAFC;
+            --white: #FFFFFF;
+            --accent: #3B82F6;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
         }
 
         body {
-            font-family: 'Open Sans', sans-serif;
-            background: var(--bg-primary);
-            color: var(--slate-dark);
-            line-height: 1.6;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--navy);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
         }
 
-        .app {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
 
-        .nav {
+        /* Header */
+        header {
             background: var(--white);
             border-bottom: 1px solid var(--border);
             position: sticky;
             top: 0;
             z-index: 100;
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.95);
         }
 
-        .nav-container {
-            max-width: 1440px;
-            margin: 0 auto;
-            padding: 12px 20px;
+        .header-content {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            padding: 16px 0;
+            gap: 20px;
             flex-wrap: wrap;
-            gap: 12px;
         }
 
-        .nav-brand {
+        .brand {
             display: flex;
             align-items: center;
             gap: 12px;
         }
 
-        .nav-logo {
-            width: 32px;
-            height: 32px;
-            background: var(--navy-primary);
-            border-radius: 6px;
+        .logo {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), #1D4ED8);
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
             font-weight: 700;
+            color: white;
             font-size: 18px;
         }
 
-        .nav-title {
-            font-size: 15px;
+        .brand-text h1 {
+            font-size: 18px;
             font-weight: 600;
-            color: var(--slate-dark);
-            font-family: 'Poppins', sans-serif;
+            color: var(--navy);
         }
 
-        .city-badge {
-            display: inline-flex;
+        .location {
+            display: flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 10px;
-            background: var(--bg-secondary);
-            border-radius: 4px;
-            font-size: 12px;
-            color: var(--slate);
-            font-weight: 500;
+            font-size: 13px;
+            color: var(--gray);
         }
 
-        .nav-actions {
+        .location-dot {
+            width: 4px;
+            height: 4px;
+            background: var(--accent);
+            border-radius: 50%;
+        }
+
+        .header-actions {
             display: flex;
             align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
+            gap: 12px;
         }
 
-        .city-selector {
-            position: relative;
-            min-width: 140px;
-        }
-
-        .city-dropdown {
-            width: 100%;
-            padding: 8px 32px 8px 12px;
-            background: var(--white);
+        .city-select {
+            padding: 8px 36px 8px 12px;
             border: 1px solid var(--border);
-            border-radius: 4px;
-            font-size: 13px;
-            color: var(--slate-dark);
-            font-weight: 500;
+            border-radius: 6px;
+            background: var(--white);
+            font-size: 14px;
+            color: var(--navy);
             cursor: pointer;
             appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2364748B' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
         }
 
-        .city-selector::after {
-            content: '▼';
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 10px;
-            color: var(--gray);
-            pointer-events: none;
-        }
-
-        .status {
+        .status-badge {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             padding: 6px 12px;
-            background: var(--bg-secondary);
-            border-radius: 4px;
-            font-size: 13px;
-            color: var(--slate);
+            background: #F0FDF4;
+            border-radius: 6px;
+            font-size: 12px;
             font-weight: 500;
+            color: var(--success);
         }
 
         .status-dot {
             width: 6px;
             height: 6px;
-            background: var(--green-accent);
+            background: var(--success);
             border-radius: 50%;
-            animation: pulse 2s ease-in-out infinite;
+            animation: pulse 2s infinite;
         }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+            50% { opacity: 0.5; }
         }
 
         .btn {
             padding: 8px 16px;
-            background: var(--navy-primary);
+            background: var(--navy);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 6px;
+            font-size: 14px;
             font-weight: 500;
-            font-size: 13px;
             cursor: pointer;
-            transition: background 0.15s ease;
+            transition: all 0.2s;
         }
 
-        .btn:hover:not(:disabled) {
-            background: var(--navy-secondary);
-        }
+        .btn:hover:not(:disabled) { background: var(--slate); transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
-        .main {
-            flex: 1;
-            max-width: 1440px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 24px 20px;
-        }
+        /* Main Content */
+        main { padding: 32px 0; }
 
         .page-header {
-            margin-bottom: 24px;
+            margin-bottom: 32px;
         }
 
         .page-title {
-            font-size: 28px;
-            font-weight: 600;
-            color: var(--slate-dark);
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--navy);
             margin-bottom: 8px;
-            font-family: 'Poppins', sans-serif;
+            font-family: 'DM Sans', sans-serif;
         }
 
         .page-subtitle {
-            font-size: 15px;
+            font-size: 16px;
             color: var(--gray);
-            line-height: 1.7;
         }
 
-        .grid {
+        /* Metrics Grid */
+        .metrics {
             display: grid;
-            grid-template-columns: repeat(12, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 20px;
-            margin-bottom: 24px;
+            margin-bottom: 32px;
         }
 
-        .panel {
+        .metric-card {
             background: var(--white);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            overflow: hidden;
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.2s;
         }
 
-        .panel-header {
-            padding: 16px 20px;
+        .metric-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--navy);
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        /* Dashboard Grid */
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+
+        .card:hover {
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+        }
+
+        .card-header {
+            padding: 20px 24px;
             border-bottom: 1px solid var(--border);
             display: flex;
-            align-items: center;
             justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 8px;
+            align-items: center;
         }
 
-        .panel-title {
-            font-size: 15px;
+        .card-title {
+            font-size: 16px;
             font-weight: 600;
-            color: var(--slate-dark);
-            font-family: 'Poppins', sans-serif;
+            color: var(--navy);
         }
 
-        .panel-label {
+        .card-badge {
             font-size: 11px;
             color: var(--gray);
             text-transform: uppercase;
@@ -244,30 +252,28 @@
             font-weight: 600;
         }
 
-        .panel-body {
-            padding: 20px;
+        .card-body {
+            padding: 24px;
         }
 
-        .outdoor-panel { grid-column: span 12; }
-        .indoor-panel { grid-column: span 12; }
-        .rain-panel { grid-column: span 12; }
-        .action-panel { grid-column: span 12; }
+        /* Outdoor Panel */
+        .outdoor { grid-column: span 5; }
 
-        .data-table {
-            width: 100%;
+        .data-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        .data-row {
+        .data-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 14px 0;
-            border-bottom: 1px solid var(--bg-secondary);
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--bg);
         }
 
-        .data-row:last-child {
-            border-bottom: none;
-        }
+        .data-item:last-child { border-bottom: none; padding-bottom: 0; }
 
         .data-label {
             font-size: 14px;
@@ -276,256 +282,279 @@
         }
 
         .data-value {
-            font-size: 22px;
-            font-weight: 600;
-            color: var(--slate-dark);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--navy);
         }
+
+        /* Indoor Panel */
+        .indoor { grid-column: span 3; }
 
         .aqi-display {
             text-align: center;
-            padding: 24px 0;
         }
 
         .aqi-number {
-            font-size: 64px;
+            font-size: 72px;
             font-weight: 700;
+            color: var(--navy);
             line-height: 1;
-            color: var(--slate-dark);
             margin-bottom: 12px;
-            font-family: 'Poppins', sans-serif;
+            font-family: 'DM Sans', sans-serif;
         }
 
-        .aqi-unit {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+        .aqi-label {
+            font-size: 12px;
             color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             font-weight: 600;
+            margin-bottom: 16px;
         }
 
-        .badge {
+        .health-badge {
             display: inline-block;
             padding: 8px 16px;
-            border-radius: 4px;
+            border-radius: 6px;
             font-size: 13px;
             font-weight: 600;
-            margin-top: 16px;
         }
 
-        .badge-good { background: #e6f7ed; color: #1f7a3f; border: 1px solid #b3e6c9; }
-        .badge-moderate { background: #fef6e7; color: #976a1f; border: 1px solid #f4d9a6; }
-        .badge-sensitive { background: #fff4e6; color: #9a4a1f; border: 1px solid #f4c9a6; }
-        .badge-unhealthy { background: #fce8e8; color: #a31f1f; border: 1px solid #f4b3b3; }
-        .badge-very-unhealthy { background: #f3e8f7; color: #6b1f8f; border: 1px solid #d9b3e6; }
-        .badge-hazardous { background: #fce8f3; color: #8f1f5c; border: 1px solid #f4b3d9; }
+        .badge-good { background: #ECFDF5; color: #059669; }
+        .badge-moderate { background: #FEF3C7; color: #D97706; }
+        .badge-sensitive { background: #FEF3C7; color: #D97706; }
+        .badge-unhealthy { background: #FEE2E2; color: #DC2626; }
+        .badge-very-unhealthy { background: #F3E8FF; color: #7C3AED; }
+        .badge-hazardous { background: #FCE7F3; color: #BE185D; }
 
-        .alert {
+        .anomaly-alert {
             display: none;
             margin-top: 16px;
-            padding: 12px 16px;
-            background: #fffbeb;
-            border: 1px solid #fcd34d;
-            border-radius: 4px;
-            max-width: 400px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .alert.active {
-            display: block;
-        }
-
-        .alert-title {
+            padding: 12px;
+            background: #FEF3C7;
+            border: 1px solid #FCD34D;
+            border-radius: 6px;
             font-size: 12px;
-            font-weight: 600;
-            color: #92400e;
-            margin-bottom: 4px;
+            color: #92400E;
         }
 
-        .alert-text {
-            font-size: 11px;
-            color: #78350f;
-            line-height: 1.4;
-        }
+        .anomaly-alert.active { display: block; }
 
-        .rain-display {
-            text-align: center;
-        }
+        /* Rain Panel */
+        .rain { grid-column: span 4; }
 
-        .rain-probability {
+        .rain-header {
             display: flex;
-            justify-content: center;
-            align-items: baseline;
-            gap: 12px;
-            margin-bottom: 8px;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
         }
 
-        .rain-label {
-            font-size: 14px;
-            color: var(--gray);
-            font-weight: 500;
-        }
-
-        .rain-value {
-            font-size: 32px;
+        .rain-prob {
+            font-size: 48px;
             font-weight: 700;
-            color: var(--navy-primary);
-            font-family: 'Poppins', sans-serif;
+            font-family: 'DM Sans', sans-serif;
         }
 
-        .action-content {
+        .prob-low { color: var(--success); }
+        .prob-medium { color: var(--warning); }
+        .prob-high { color: var(--danger); }
+
+        .chart-container {
+            position: relative;
+            height: 200px;
+        }
+
+        /* Recommendation Panel */
+        .recommendation { grid-column: span 12; }
+
+        .rec-content {
             text-align: center;
-            padding: 24px 16px;
+            padding: 32px;
         }
 
-        .action-status {
-            width: 72px;
-            height: 72px;
-            margin: 0 auto 20px;
+        .rec-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 36px;
+            font-size: 40px;
+            transition: transform 0.3s;
         }
 
-        .action-status.open {
-            background: #e6f7ed;
-        }
+        .rec-icon:hover { transform: scale(1.05); }
+        .icon-open { background: #ECFDF5; }
+        .icon-close { background: #FEE2E2; }
 
-        .action-status.close {
-            background: #fce8e8;
-        }
-
-        .action-status.keep-closed {
-            background: #e6f7ed;
-        }
-
-        .action-title {
-            font-size: 24px;
+        .rec-title {
+            font-size: 28px;
             font-weight: 700;
             margin-bottom: 12px;
-            font-family: 'Poppins', sans-serif;
+            font-family: 'DM Sans', sans-serif;
         }
 
-        .action-title.open { color: var(--green-accent); }
-        .action-title.close { color: var(--red-accent); }
-        .action-title.keep-closed { color: var(--green-accent); }
+        .title-open { color: var(--success); }
+        .title-close { color: var(--danger); }
 
-        .action-description {
+        .rec-desc {
+            font-size: 16px;
+            color: var(--slate);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* About Section */
+        .about {
+            margin-top: 48px;
+            padding-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+
+        .about-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+        }
+
+        .about-card {
+            padding: 24px;
+        }
+
+        .about-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 12px;
+        }
+
+        .about-text {
             font-size: 14px;
             color: var(--slate);
             line-height: 1.6;
-            max-width: 500px;
-            margin: 0 auto;
         }
 
-        .footer {
+        .about-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .about-link:hover { text-decoration: underline; }
+
+        /* Footer */
+        footer {
             background: var(--white);
             border-top: 1px solid var(--border);
-            padding: 20px;
-            margin-top: 32px;
+            padding: 24px 0;
+            margin-top: 48px;
         }
 
-        .footer-container {
-            max-width: 1440px;
-            margin: 0 auto;
+        .footer-content {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 13px;
+            font-size: 14px;
             color: var(--gray);
-            gap: 12px;
             flex-wrap: wrap;
+            gap: 12px;
         }
 
-        .loading {
-            opacity: 0.6;
-            pointer-events: none;
+        .loading { opacity: 0.6; pointer-events: none; }
+
+        @media (max-width: 1024px) {
+            .outdoor, .indoor, .rain, .recommendation { grid-column: span 12; }
         }
 
-        @media (min-width: 1024px) {
-            .outdoor-panel { grid-column: span 5; }
-            .indoor-panel { grid-column: span 3; }
-            .rain-panel { grid-column: span 4; }
-            .action-panel { grid-column: span 12; }
-        }
-
-        @media (max-width: 767px) {
-            .page-title {
-                font-size: 22px;
-            }
-
-            .aqi-number {
-                font-size: 56px;
-            }
-
-            .action-title {
-                font-size: 20px;
-            }
+        @media (max-width: 768px) {
+            .page-title { font-size: 24px; }
+            .aqi-number { font-size: 56px; }
+            .rain-prob { font-size: 40px; }
         }
     </style>
 </head>
 <body>
-    <div class="app">
-        <nav class="nav">
-            <div class="nav-container">
-                <div class="nav-brand">
-                    <div class="nav-logo">AQ</div>
-                    <div>
-                        <div class="nav-title">Air Quality Monitoring</div>
-                        <div class="nav-meta">
-                            <span class="city-badge">
-                                <span>📍</span>
-                                <span id="current-city">Colombo</span>
-                            </span>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <div class="brand">
+                    <div class="logo">AQ</div>
+                    <div class="brand-text">
+                        <h1>Air Quality Monitor</h1>
+                        <div class="location">
+                            <span class="location-dot"></span>
+                            <span id="current-city">Colombo</span>
                         </div>
                     </div>
                 </div>
-                <div class="nav-actions">
-                    <div class="city-selector">
-                        <select class="city-dropdown" id="city-select" onchange="changeCity()">
-                            <option value="">Loading cities...</option>
-                        </select>
-                    </div>
-                    <div class="status">
+                <div class="header-actions">
+                    <select class="city-select" id="city-select" onchange="changeCity()">
+                        <option value="">Loading...</option>
+                    </select>
+                    <div class="status-badge">
                         <span class="status-dot"></span>
-                        <span id="status-text">ONLINE</span>
+                        <span id="status-text">Online</span>
                     </div>
                     <button class="btn" id="refresh-btn" onclick="refreshData()">
                         <span id="btn-text">Refresh</span>
                     </button>
+                    <a href="/monitor" style="padding: 8px 16px; background: transparent; color: var(--slate); border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s; display: inline-block;">
+                        Analytics
+                    </a>
                 </div>
             </div>
-        </nav>
+        </div>
+    </header>
 
-        <main class="main">
+    <main>
+        <div class="container">
             <div class="page-header">
-                <h1 class="page-title">Environmental Monitoring Dashboard</h1>
-                <p class="page-subtitle">Real-time air quality prediction with 24-hour rain forecasting using machine learning.</p>
+                <h2 class="page-title">Environmental Dashboard</h2>
+                <p class="page-subtitle">Real-time air quality monitoring with 24-hour rain forecasting</p>
             </div>
 
-            <div class="grid">
-                <div class="panel outdoor-panel">
-                    <div class="panel-header">
-                        <h2 class="panel-title">Outdoor Environment</h2>
-                        <span class="panel-label">LIVE DATA</span>
+            <div class="metrics">
+                <div class="metric-card">
+                    <div class="metric-label">Temperature</div>
+                    <div class="metric-value" id="info-temp">--°C</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Humidity</div>
+                    <div class="metric-value" id="info-humidity">--%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Pressure</div>
+                    <div class="metric-value" id="info-pressure">-- hPa</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Cloud Cover</div>
+                    <div class="metric-value" id="info-clouds">--%</div>
+                </div>
+            </div>
+
+            <div class="dashboard">
+                <div class="card outdoor">
+                    <div class="card-header">
+                        <h3 class="card-title">Outdoor Environment</h3>
+                        <span class="card-badge">Live Data</span>
                     </div>
-                    <div class="panel-body">
-                        <div class="data-table">
-                            <div class="data-row">
+                    <div class="card-body">
+                        <div class="data-list">
+                            <div class="data-item">
                                 <span class="data-label">Air Quality Index</span>
                                 <span class="data-value" id="outdoor-aqi">--</span>
                             </div>
-                            <div class="data-row">
+                            <div class="data-item">
                                 <span class="data-label">Temperature</span>
                                 <span class="data-value" id="temp">--°C</span>
                             </div>
-                            <div class="data-row">
-                                <span class="data-label">Relative Humidity</span>
+                            <div class="data-item">
+                                <span class="data-label">Humidity</span>
                                 <span class="data-value" id="humidity">--%</span>
                             </div>
-                            <div class="data-row">
+                            <div class="data-item">
                                 <span class="data-label">Wind Speed</span>
                                 <span class="data-value" id="wind">-- m/s</span>
                             </div>
@@ -533,89 +562,103 @@
                     </div>
                 </div>
 
-                <div class="panel indoor-panel">
-                    <div class="panel-header">
-                        <h2 class="panel-title">Indoor Forecast</h2>
-                        <span class="panel-label">ML PREDICTION</span>
+                <div class="card indoor">
+                    <div class="card-header">
+                        <h3 class="card-title">Indoor Forecast</h3>
+                        <span class="card-badge">ML Prediction</span>
                     </div>
-                    <div class="panel-body">
+                    <div class="card-body">
                         <div class="aqi-display">
                             <div class="aqi-number" id="indoor-aqi">--</div>
-                            <div class="aqi-unit">Indoor AQI</div>
-                            <div class="badge" id="health-badge">Analyzing...</div>
-                            <div class="alert" id="anomaly-alert">
-                                <div class="alert-title">ANOMALY DETECTED</div>
-                                <div class="alert-text">Unusual air quality pattern identified</div>
+                            <div class="aqi-label">Indoor AQI</div>
+                            <span class="health-badge" id="health-badge">Analyzing...</span>
+                            <div class="anomaly-alert" id="anomaly-alert">
+                                Anomaly detected in air quality pattern
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="panel rain-panel">
-                    <div class="panel-header">
-                        <h2 class="panel-title">24h Rain Forecast</h2>
-                        <span class="panel-label">ML PREDICTION</span>
+                <div class="card rain">
+                    <div class="card-header">
+                        <h3 class="card-title">24h Rain Forecast</h3>
+                        <span class="card-badge">ML Prediction</span>
                     </div>
-                    <div class="panel-body">
-                        <div class="rain-display">
-                            <div class="rain-probability">
-                                <span class="rain-label">Rain Probability</span>
-                                <span class="rain-value" id="rain-prob">--%</span>
-                            </div>
-                            <canvas id="rain-chart" style="max-height: 150px; margin-top: 16px;"></canvas>
+                    <div class="card-body">
+                        <div class="rain-header">
+                            <div class="metric-label">Probability</div>
+                            <div class="rain-prob" id="rain-prob">--%</div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="rain-chart"></canvas>
                         </div>
                     </div>
                 </div>
 
-                <div class="panel action-panel">
-                    <div class="panel-header">
-                        <h2 class="panel-title">System Recommendation</h2>
-                        <span class="panel-label">AUTO-GENERATED</span>
+                <div class="card recommendation">
+                    <div class="card-header">
+                        <h3 class="card-title">System Recommendation</h3>
+                        <span class="card-badge">Auto-Generated</span>
                     </div>
-                    <div class="panel-body">
-                        <div class="action-content">
-                            <div class="action-status" id="action-status">
-                                <span id="action-icon">⏳</span>
-                            </div>
-                            <div class="action-title" id="action-title">ANALYZING</div>
-                            <p class="action-description" id="action-desc">Processing environmental data...</p>
+                    <div class="card-body">
+                        <div class="rec-content">
+                            <div class="rec-icon" id="rec-icon"></div>
+                            <h4 class="rec-title" id="rec-title">Analyzing</h4>
+                            <p class="rec-desc" id="rec-desc">Processing environmental data...</p>
                         </div>
                     </div>
                 </div>
             </div>
-        </main>
 
-        <footer class="footer">
-            <div class="footer-container">
-                <span class="footer-text">Air Quality Monitoring System • 2026</span>
-                <span class="footer-text" id="last-update">Last updated: --</span>
+            <div class="about">
+                <div class="about-grid">
+                    <div class="about-card">
+                        <h3 class="about-title">Purpose</h3>
+                        <p class="about-text">Real-time air quality monitoring and predictions to help make informed decisions about indoor ventilation and window management.</p>
+                    </div>
+                    <div class="about-card">
+                        <h3 class="about-title">Technology</h3>
+                        <p class="about-text">Machine learning algorithms including Random Forest for predictions and Isolation Forest for anomaly detection, integrated with OpenWeather API.</p>
+                    </div>
+                    <div class="about-card">
+                        <h3 class="about-title">Features</h3>
+                        <p class="about-text">Real-time outdoor AQI tracking, ML-powered indoor predictions, 24-hour rain forecasting, and intelligent window recommendations.</p>
+                    </div>
+                    <div class="about-card">
+                        <h3 class="about-title">Company</h3>
+                        <p class="about-text">Managed by BRIDGP DYNAMICS (Pvt) Ltd. Visit <a href="https://bridgp.com" target="_blank" rel="noopener" class="about-link">bridgp.com</a> for more information.</p>
+                    </div>
+                </div>
             </div>
-        </footer>
-    </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <span>Air Quality Monitoring System © 2026</span>
+                <span id="last-update">Last updated: --</span>
+            </div>
+        </div>
+    </footer>
 
     <script>
-        let autoRefreshInterval;
-        let isChangingCity = false;
         let rainChart = null;
+        let isChangingCity = false;
 
         async function loadCities() {
             try {
                 const res = await fetch('/api/cities');
                 const data = await res.json();
-                
                 const select = document.getElementById('city-select');
                 select.innerHTML = '';
-                
                 data.cities.forEach(city => {
                     const option = document.createElement('option');
                     option.value = city;
                     option.textContent = city;
-                    if (city === data.current) {
-                        option.selected = true;
-                    }
+                    if (city === data.current) option.selected = true;
                     select.appendChild(option);
                 });
-                
                 document.getElementById('current-city').textContent = data.current;
             } catch (err) {
                 console.error('Error loading cities:', err);
@@ -625,16 +668,14 @@
         async function changeCity() {
             const select = document.getElementById('city-select');
             const city = select.value;
-            
             if (!city || isChangingCity) return;
             
             isChangingCity = true;
             const btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             select.disabled = true;
-            
-            document.querySelector('.grid').classList.add('loading');
-            document.getElementById('status-text').textContent = 'UPDATING...';
+            document.querySelector('.dashboard').classList.add('loading');
+            document.getElementById('status-text').textContent = 'Updating...';
             
             try {
                 const res = await fetch('/api/change-city', {
@@ -642,15 +683,14 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ city })
                 });
-                
                 const data = await res.json();
                 updateUI(data);
                 document.getElementById('current-city').textContent = city;
             } catch (err) {
                 console.error('Error changing city:', err);
-                document.getElementById('status-text').textContent = 'ERROR';
+                document.getElementById('status-text').textContent = 'Error';
             } finally {
-                document.querySelector('.grid').classList.remove('loading');
+                document.querySelector('.dashboard').classList.remove('loading');
                 btn.disabled = false;
                 select.disabled = false;
                 isChangingCity = false;
@@ -664,17 +704,16 @@
                 updateUI(data);
             } catch (err) {
                 console.error('Fetch error:', err);
-                document.getElementById('status-text').textContent = 'OFFLINE';
+                document.getElementById('status-text').textContent = 'Offline';
             }
         }
 
         async function refreshData() {
             const btn = document.getElementById('refresh-btn');
             const btnText = document.getElementById('btn-text');
-            
             btn.disabled = true;
             btnText.textContent = '...';
-            document.querySelector('.grid').classList.add('loading');
+            document.querySelector('.dashboard').classList.add('loading');
             
             try {
                 const res = await fetch('/api/refresh');
@@ -683,69 +722,65 @@
             } catch (err) {
                 console.error('Refresh error:', err);
             } finally {
-                document.querySelector('.grid').classList.remove('loading');
+                document.querySelector('.dashboard').classList.remove('loading');
                 btnText.textContent = 'Refresh';
                 btn.disabled = false;
             }
         }
 
         function updateUI(data) {
+            document.getElementById('info-temp').textContent = data.temp.toFixed(1) + '°C';
+            document.getElementById('info-humidity').textContent = Math.round(data.humidity) + '%';
+            document.getElementById('info-pressure').textContent = Math.round(data.pressure) + ' hPa';
+            document.getElementById('info-clouds').textContent = Math.round(data.clouds) + '%';
+            
             document.getElementById('outdoor-aqi').textContent = Math.round(data.outdoor_aqi);
             document.getElementById('temp').textContent = data.temp.toFixed(1) + '°C';
             document.getElementById('humidity').textContent = Math.round(data.humidity) + '%';
             document.getElementById('wind').textContent = data.wind_speed.toFixed(1) + ' m/s';
-            document.getElementById('indoor-aqi').textContent = Math.round(data.indoor_aqi);
             
+            document.getElementById('indoor-aqi').textContent = Math.round(data.indoor_aqi);
             const badge = document.getElementById('health-badge');
             badge.textContent = data.indoor_risk;
-            badge.className = 'badge ' + getBadgeClass(data.indoor_risk);
+            badge.className = 'health-badge ' + getBadgeClass(data.indoor_risk);
             
-            const alert = document.getElementById('anomaly-alert');
-            alert.classList.toggle('active', data.is_anomaly);
+            document.getElementById('anomaly-alert').classList.toggle('active', data.is_anomaly);
             
             const rainProb = data.rain_probability_24h || 0;
-            document.getElementById('rain-prob').textContent = (rainProb * 100).toFixed(0) + '%';
+            const rainPercent = Math.round(rainProb * 100);
+            const rainEl = document.getElementById('rain-prob');
+            rainEl.textContent = rainPercent + '%';
+            rainEl.className = 'rain-prob ' + (rainPercent < 30 ? 'prob-low' : rainPercent < 60 ? 'prob-medium' : 'prob-high');
             
             if (data.rain_risk_curve && data.rain_risk_curve.length > 0) {
-                updateRainChart(data.rain_risk_curve, rainProb * 100);
+                updateRainChart(data.rain_risk_curve, rainPercent);
             }
             
-            const actionStatus = document.getElementById('action-status');
-            const actionIcon = document.getElementById('action-icon');
-            const actionTitle = document.getElementById('action-title');
-            const actionDesc = document.getElementById('action-desc');
-            
+            const icon = document.getElementById('rec-icon');
+            const title = document.getElementById('rec-title');
             const isOpen = data.recommendation.includes('OPEN');
-            const isKeepClosed = data.recommendation.includes('KEEP CLOSED');
+            const isGood = data.recommendation.includes('ALL GOOD');
             
-            if (isOpen) {
-                actionStatus.className = 'action-status open';
-                actionIcon.textContent = '✓';
-                actionTitle.className = 'action-title open';
-            } else if (isKeepClosed) {
-                actionStatus.className = 'action-status keep-closed';
-                actionIcon.textContent = '✓';
-                actionTitle.className = 'action-title keep-closed';
+            if (isGood || isOpen) {
+                icon.textContent = '✓';
+                icon.className = 'rec-icon icon-open';
+                title.className = 'rec-title title-open';
             } else {
-                actionStatus.className = 'action-status close';
-                actionIcon.textContent = '✕';
-                actionTitle.className = 'action-title close';
+                icon.textContent = '✕';
+                icon.className = 'rec-icon icon-close';
+                title.className = 'rec-title title-close';
             }
             
-            actionTitle.textContent = data.recommendation;
-            actionDesc.textContent = data.explanation;
+            title.textContent = data.recommendation;
+            document.getElementById('rec-desc').textContent = data.explanation;
             
-            document.getElementById('status-text').textContent = 'ONLINE';
-            document.getElementById('last-update').textContent = 
-                'Last updated: ' + new Date(data.timestamp).toLocaleTimeString();
-            
-            if (data.city) {
-                document.getElementById('current-city').textContent = data.city;
-            }
+            document.getElementById('status-text').textContent = 'Online';
+            document.getElementById('last-update').textContent = 'Last updated: ' + new Date(data.timestamp).toLocaleTimeString();
         }
 
         function updateRainChart(riskCurve, mlProbability) {
-            const ctx = document.getElementById('rain-chart').getContext('2d');
+            const ctx = document.getElementById('rain-chart');
+            if (!ctx) return;
             
             const labels = riskCurve.map(d => d.hour + 'h');
             const risks = riskCurve.map(d => d.risk);
@@ -754,7 +789,7 @@
                 rainChart.data.labels = labels;
                 rainChart.data.datasets[0].data = risks;
                 rainChart.data.datasets[1].data = Array(risks.length).fill(mlProbability);
-                rainChart.update();
+                rainChart.update('none');
             } else {
                 rainChart = new Chart(ctx, {
                     type: 'line',
@@ -763,14 +798,15 @@
                         datasets: [{
                             label: 'Risk Score',
                             data: risks,
-                            borderColor: '#3182ce',
-                            backgroundColor: 'rgba(49, 130, 206, 0.1)',
-                            tension: 0.3,
-                            fill: true
+                            borderColor: '#3B82F6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            tension: 0.4,
+                            fill: true,
+                            borderWidth: 2
                         }, {
-                            label: 'ML Probability',
+                            label: 'ML Prediction',
                             data: Array(risks.length).fill(mlProbability),
-                            borderColor: '#e53e3e',
+                            borderColor: '#EF4444',
                             borderDash: [5, 5],
                             borderWidth: 2,
                             pointRadius: 0,
@@ -781,18 +817,10 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            legend: {
-                                display: true,
-                                position: 'bottom',
-                                labels: { font: { size: 10 } }
-                            }
+                            legend: { display: true, position: 'bottom' }
                         },
                         scales: {
-                            y: {
-                                beginAtZero: true,
-                                max: 100,
-                                ticks: { callback: (val) => val + '%' }
-                            }
+                            y: { beginAtZero: true, max: 100, ticks: { callback: (val) => val + '%' } }
                         }
                     }
                 });
@@ -813,11 +841,8 @@
 
         loadCities();
         fetchData();
-        autoRefreshInterval = setInterval(fetchData, 60000);
-
-        document.addEventListener('visibilitychange', () => {
-            if (!document.hidden) fetchData();
-        });
+        setInterval(fetchData, 60000);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) fetchData(); });
     </script>
 </body>
 </html>

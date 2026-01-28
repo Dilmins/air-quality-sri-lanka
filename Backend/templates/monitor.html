@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Monitor - Air Quality</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --navy: #0F172A;
+            --slate: #334155;
+            --gray: #64748B;
+            --border: #E2E8F0;
+            --bg: #F8FAFC;
+            --white: #FFFFFF;
+            --accent: #3B82F6;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--navy);
+            line-height: 1.5;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+
+        header {
+            background: var(--white);
+            border-bottom: 1px solid var(--border);
+            padding: 20px 0;
+            margin-bottom: 32px;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--navy);
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .nav-link {
+            color: var(--slate);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 32px;
+            background: var(--white);
+            padding: 6px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            width: fit-content;
+        }
+
+        .tab {
+            padding: 10px 24px;
+            background: none;
+            border: none;
+            color: var(--gray);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 6px;
+        }
+
+        .tab.active {
+            background: var(--navy);
+            color: white;
+        }
+
+        .tab:hover:not(.active) { 
+            background: var(--bg);
+            color: var(--navy);
+        }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--navy);
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .stat-value.good { color: var(--success); }
+        .stat-value.warning { color: var(--warning); }
+
+        .card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--navy);
+            margin-bottom: 20px;
+        }
+
+        .prediction-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .prediction-item {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            transition: all 0.2s;
+        }
+
+        .prediction-item:hover {
+            border-color: var(--accent);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+        }
+
+        .prediction-item.verified {
+            background: #F0FDF4;
+        }
+
+        .prediction-item.ready {
+            background: #FEF3C7;
+        }
+
+        .prediction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .prediction-time {
+            font-size: 14px;
+            color: var(--slate);
+            font-weight: 500;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-verified { background: #ECFDF5; color: var(--success); }
+        .badge-pending { background: var(--bg); color: var(--gray); }
+        .badge-ready { background: #FEF3C7; color: #D97706; }
+
+        .prediction-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .detail-item {
+            font-size: 13px;
+        }
+
+        .detail-label {
+            color: var(--gray);
+            font-size: 12px;
+        }
+
+        .detail-value {
+            color: var(--navy);
+            font-weight: 500;
+        }
+
+        .verify-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #DC2626;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2563EB;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background: #ECFDF5;
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        .alert-danger {
+            background: #FEE2E2;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+        }
+
+        .alert-info {
+            background: #EFF6FF;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+
+        .confusion-matrix {
+            display: grid;
+            grid-template-columns: 100px 1fr 1fr;
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .cm-cell {
+            background: var(--white);
+            padding: 16px;
+            text-align: center;
+        }
+
+        .cm-header {
+            background: var(--bg);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray);
+        }
+
+        .cm-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--navy);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--gray);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--gray);
+        }
+
+        .retrain-section {
+            background: var(--white);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+        }
+
+        .retrain-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--navy);
+        }
+
+        .retrain-description {
+            font-size: 16px;
+            color: var(--slate);
+            margin-bottom: 24px;
+        }
+
+        .progress-circle {
+            font-size: 48px;
+            font-weight: 700;
+            margin: 24px 0;
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <h1>System Monitor & Verification</h1>
+                <a href="/" class="nav-link">← Back to Dashboard</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('verify')">Verify Predictions</button>
+            <button class="tab" onclick="switchTab('performance')">Performance</button>
+            <button class="tab" onclick="switchTab('retrain')">Retrain Model</button>
+        </div>
+
+        <!-- Verify Tab -->
+        <div id="verify-tab" class="tab-content active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Predictions</div>
+                    <div class="stat-value" id="total-predictions">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Verified</div>
+                    <div class="stat-value good" id="verified-count">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Ready to Verify</div>
+                    <div class="stat-value warning" id="ready-count">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">API Calls Today</div>
+                    <div class="stat-value" id="api-calls">-</div>
+                </div>
+            </div>
+
+            <div id="alert-container"></div>
+
+            <div class="card">
+                <h2 class="card-title">Recent Predictions</h2>
+                <div id="predictions-list" class="loading">Loading predictions...</div>
+            </div>
+        </div>
+
+        <!-- Performance Tab -->
+        <div id="performance-tab" class="tab-content">
+            <div id="performance-content" class="loading">Loading performance data...</div>
+        </div>
+
+        <!-- Retrain Tab -->
+        <div id="retrain-tab" class="tab-content">
+            <div id="retrain-content" class="loading">Loading retrain status...</div>
+        </div>
+    </div>
+
+    <script>
+        let predictions = [];
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
+            document.getElementById(`${tab}-tab`).classList.add('active');
+            
+            if (tab === 'performance') loadPerformance();
+            if (tab === 'retrain') loadRetrainStatus();
+        }
+
+        async function loadPredictions() {
+            try {
+                const [predRes, statsRes] = await Promise.all([
+                    fetch('/api/predictions/recent'),
+                    fetch('/api/stats')
+                ]);
+                
+                const predData = await predRes.json();
+                const statsData = await statsRes.json();
+                
+                predictions = predData.predictions || [];
+                
+                // Update stats
+                const total = predictions.length;
+                const verified = predictions.filter(p => p.verified).length;
+                const ready = predictions.filter(p => p.ready_to_verify).length;
+                
+                document.getElementById('total-predictions').textContent = total;
+                document.getElementById('verified-count').textContent = verified;
+                document.getElementById('ready-count').textContent = ready;
+                document.getElementById('api-calls').textContent = 
+                    `${statsData.api_calls_today || 0}/${statsData.api_limit || 950}`;
+                
+                // Render predictions
+                const container = document.getElementById('predictions-list');
+                
+                if (predictions.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📊</div>
+                            <p>No predictions yet. System will start logging predictions automatically.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = '<div class="prediction-list">' +
+                    predictions.map(p => renderPrediction(p)).join('') +
+                    '</div>';
+                
+            } catch (error) {
+                console.error('Error loading predictions:', error);
+                document.getElementById('predictions-list').innerHTML = 
+                    '<div class="alert alert-danger">Error loading predictions</div>';
+            }
+        }
+
+        function renderPrediction(p) {
+            const statusClass = p.verified ? 'verified' : (p.ready_to_verify ? 'ready' : '');
+            const badge = p.verified ? 
+                '<span class="badge badge-verified">✓ Verified</span>' :
+                p.ready_to_verify ?
+                '<span class="badge badge-ready">Ready to Verify</span>' :
+                '<span class="badge badge-pending">Pending (wait 24h)</span>';
+            
+            return `
+                <div class="prediction-item ${statusClass}">
+                    <div class="prediction-header">
+                        <span class="prediction-time">${p.display_time} (${p.hours_ago}h ago)</span>
+                        ${badge}
+                    </div>
+                    <div class="prediction-details">
+                        <div class="detail-item">
+                            <div class="detail-label">City</div>
+                            <div class="detail-value">${p.city}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Rain Probability</div>
+                            <div class="detail-value">${p.rain_probability}%</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Temperature</div>
+                            <div class="detail-value">${p.temp}°C</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Humidity</div>
+                            <div class="detail-value">${p.humidity}%</div>
+                        </div>
+                    </div>
+                    <div class="detail-item" style="margin-top: 8px;">
+                        <div class="detail-label">Recommendation</div>
+                        <div class="detail-value">${p.recommendation}</div>
+                    </div>
+                    ${p.verified ? `
+                        <div class="alert alert-success" style="margin-top: 12px;">
+                            Verified: ${p.actual_rain === 1 ? 'Rain occurred' : 'No rain'} 
+                            ${(p.actual_rain === 1 && p.rain_probability > 50) || (p.actual_rain === 0 && p.rain_probability <= 50) ? '✓ Correct' : '✗ Incorrect'}
+                        </div>
+                    ` : p.ready_to_verify ? `
+                        <div class="verify-actions">
+                            <button class="btn btn-success" onclick="verifyPrediction(${p.id}, 1)">
+                                Yes, it rained
+                            </button>
+                            <button class="btn btn-danger" onclick="verifyPrediction(${p.id}, 0)">
+                                No, it didn't rain
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        async function verifyPrediction(id, actualRain) {
+            try {
+                const alertContainer = document.getElementById('alert-container');
+                
+                const response = await fetch('/api/predictions/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, actual_rain: actualRain })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const correct = data.correct ? 'Correct' : 'Incorrect';
+                    const alertClass = data.correct ? 'alert-success' : 'alert-danger';
+                    
+                    alertContainer.innerHTML = `
+                        <div class="alert ${alertClass}">
+                            ${correct} prediction! Predicted: ${data.predicted_prob}%, Actual: ${actualRain === 1 ? 'Rain' : 'No Rain'}
+                        </div>
+                    `;
+                    
+                    setTimeout(() => alertContainer.innerHTML = '', 5000);
+                    loadPredictions();
+                } else {
+                    alertContainer.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error verifying:', error);
+                document.getElementById('alert-container').innerHTML = 
+                    '<div class="alert alert-danger">Verification failed</div>';
+            }
+        }
+
+        async function loadPerformance() {
+            try {
+                const response = await fetch('/api/performance');
+                const data = await response.json();
+                
+                const container = document.getElementById('performance-content');
+                
+                if (data.insufficient_data) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📈</div>
+                            <h3>Not Enough Data Yet</h3>
+                            <p>Need at least 5 verified predictions. Currently have ${data.verified_count}.</p>
+                            <p style="margin-top: 16px;">Keep verifying predictions to see performance metrics!</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = `
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Accuracy</div>
+                            <div class="stat-value ${data.accuracy >= 85 ? 'good' : data.accuracy >= 70 ? 'warning' : 'danger'}">
+                                ${data.accuracy}%
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Precision</div>
+                            <div class="stat-value">${data.precision}%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Recall</div>
+                            <div class="stat-value">${data.recall}%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">F1 Score</div>
+                            <div class="stat-value">${data.f1_score}%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">Confusion Matrix</h2>
+                        <div class="confusion-matrix">
+                            <div class="cm-cell cm-header"></div>
+                            <div class="cm-cell cm-header">Predicted No Rain</div>
+                            <div class="cm-cell cm-header">Predicted Rain</div>
+                            
+                            <div class="cm-cell cm-header">Actual No Rain</div>
+                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.true_negatives}</div><div style="font-size: 12px; color: var(--gray);">True Negatives</div></div>
+                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.false_positives}</div><div style="font-size: 12px; color: var(--gray);">False Positives</div></div>
+                            
+                            <div class="cm-cell cm-header">Actual Rain</div>
+                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.false_negatives}</div><div style="font-size: 12px; color: var(--gray);">False Negatives</div></div>
+                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.true_positives}</div><div style="font-size: 12px; color: var(--gray);">True Positives</div></div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <h2 class="card-title">API Usage (Last 7 Days)</h2>
+                        ${data.api_usage.map(u => `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);">
+                                <span>${u.date}</span>
+                                <span style="font-weight: 600;">${u.calls} calls</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading performance:', error);
+                document.getElementById('performance-content').innerHTML = 
+                    '<div class="alert alert-danger">Error loading performance data</div>';
+            }
+        }
+
+        async function loadRetrainStatus() {
+            try {
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+                
+                const verified = data.verified_predictions || 0;
+                const canRetrain = verified >= 50;
+                
+                const container = document.getElementById('retrain-content');
+                container.innerHTML = `
+                    <div class="retrain-section">
+                        <h2 class="retrain-title">Model Retraining</h2>
+                        <p class="retrain-description">
+                            Retrain the model with verified data to improve accuracy
+                        </p>
+                        <div class="progress-circle">
+                            ${verified}/50
+                        </div>
+                        <p style="color: var(--slate); margin-bottom: 24px;">
+                            Verified predictions
+                        </p>
+                        ${canRetrain ? `
+                            <button class="btn btn-primary" onclick="triggerRetrain()" id="retrain-btn">
+                                Start Retraining
+                            </button>
+                        ` : `
+                            <p style="color: var(--gray);">Keep verifying to unlock retraining</p>
+                        `}
+                    </div>
+                    
+                    <div class="card" style="margin-top: 24px;">
+                        <h3 class="card-title">Retraining Process</h3>
+                        <ul style="line-height: 2; color: var(--slate); list-style-position: inside;">
+                            <li>Combines verified data with training data</li>
+                            <li>Trains improved model (2-5 minutes)</li>
+                            <li>Backs up old model automatically</li>
+                            <li>Updates live system</li>
+                            <li>No downtime during process</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="alert alert-info" style="margin-top: 16px;">
+                        <strong>Tip:</strong> Retrain every 50-100 verifications for best results
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading retrain status:', error);
+            }
+        }
+
+        async function triggerRetrain() {
+            if (!confirm('Start retraining? This will take 2-5 minutes.')) return;
+            
+            const btn = document.getElementById('retrain-btn');
+            btn.disabled = true;
+            btn.textContent = 'Retraining...';
+            
+            try {
+                const response = await fetch('/api/retrain', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert('Retraining started! Check back in 5 minutes. The system will continue working normally.');
+                    loadRetrainStatus();
+                } else {
+                    alert('Error: ' + (data.error || 'Retraining failed'));
+                    btn.disabled = false;
+                    btn.textContent = 'Retrain Model Now';
+                }
+            } catch (error) {
+                alert('Retraining failed. Check server logs.');
+                btn.disabled = false;
+                btn.textContent = 'Retrain Model Now';
+            }
+        }
+
+        // Load data on page load
+        loadPredictions();
+        
+        // Refresh every 30 seconds
+        setInterval(loadPredictions, 30000);
+    </script>
+</body>
+</html>

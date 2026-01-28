@@ -1,72 +1,125 @@
 ﻿import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
 import pickle
-
-print("🌧️ Creating Realistic Rain Prediction Model...")
+import os
 
 np.random.seed(42)
 
-# Generate 20,000 realistic weather samples based on actual meteorological patterns
-n = 20000
-X = np.zeros((n, 14))
-y = np.zeros(n)
+print("="*70)
+print("RAIN PREDICTION MODEL TRAINING")
+print("="*70)
 
-for i in range(n):
-    # Generate realistic weather scenarios
-    # Scenario distribution: 70% clear, 20% cloudy, 10% rainy
-    scenario = np.random.choice(['clear', 'cloudy', 'rainy'], p=[0.70, 0.20, 0.10])
+# Generate realistic meteorological dataset with noise and edge cases
+n_samples = 20000  # Reduced for your hardware
+X = np.zeros((n_samples, 14))
+y = np.zeros(n_samples)
+
+print("\nGenerating realistic weather scenarios with noise...")
+
+# More nuanced scenario distributions with overlapping conditions
+scenarios = {
+    'clear': {'weight': 0.42, 'rain_prob': 0.02},  # Sometimes light rain even when clear
+    'partly_cloudy': {'weight': 0.26, 'rain_prob': 0.05},
+    'cloudy': {'weight': 0.16, 'rain_prob': 0.15},
+    'pre_rain': {'weight': 0.11, 'rain_prob': 0.60},  # Not always rain
+    'rain': {'weight': 0.05, 'rain_prob': 0.95}  # Not perfect
+}
+
+for i in range(n_samples):
+    scenario_type = np.random.choice(
+        list(scenarios.keys()),
+        p=[s['weight'] for s in scenarios.values()]
+    )
     
-    if scenario == 'clear':
-        temp = np.random.uniform(20, 35)
-        hum = np.random.uniform(40, 70)
-        pres = np.random.uniform(1010, 1025)
-        wind = np.random.uniform(1, 6)
-        clouds = np.random.uniform(0, 40)
-    elif scenario == 'cloudy':
-        temp = np.random.uniform(18, 30)
-        hum = np.random.uniform(60, 85)
-        pres = np.random.uniform(1005, 1015)
-        wind = np.random.uniform(2, 8)
-        clouds = np.random.uniform(50, 85)
-    else:  # rainy
-        temp = np.random.uniform(15, 28)
-        hum = np.random.uniform(75, 98)
-        pres = np.random.uniform(990, 1008)
+    # Add random noise to make data less deterministic
+    noise_factor = np.random.uniform(0.85, 1.15)
+    
+    if scenario_type == 'clear':
+        temp = np.random.normal(28, 5) * noise_factor
+        hum = np.random.normal(55, 12)
+        pres = np.random.normal(1018, 6)
+        wind = np.random.uniform(0, 6)
+        clouds = np.random.uniform(0, 35)
+        
+    elif scenario_type == 'partly_cloudy':
+        temp = np.random.normal(26, 4) * noise_factor
+        hum = np.random.normal(65, 10)
+        pres = np.random.normal(1013, 5)
+        wind = np.random.uniform(1, 8)
+        clouds = np.random.uniform(25, 65)
+        
+    elif scenario_type == 'cloudy':
+        temp = np.random.normal(24, 4) * noise_factor
+        hum = np.random.normal(73, 9)
+        pres = np.random.normal(1008, 6)
+        wind = np.random.uniform(2, 10)
+        clouds = np.random.uniform(55, 90)
+        
+    elif scenario_type == 'pre_rain':
+        temp = np.random.normal(22, 4) * noise_factor
+        hum = np.random.normal(82, 8)
+        pres = np.random.normal(1002, 6)
         wind = np.random.uniform(3, 12)
+        clouds = np.random.uniform(70, 100)
+        
+    else:  # rain
+        temp = np.random.normal(21, 4) * noise_factor
+        hum = np.random.normal(90, 6)
+        pres = np.random.normal(996, 7)
+        wind = np.random.uniform(4, 15)
         clouds = np.random.uniform(80, 100)
     
-    # Calculate dew point (approximation)
-    dew_point = temp - ((100 - hum) / 5.0)
+    # Ensure realistic bounds
+    temp = np.clip(temp, 15, 40)
+    hum = np.clip(hum, 30, 100)
+    pres = np.clip(pres, 980, 1030)
+    wind = np.clip(wind, 0, 20)
+    clouds = np.clip(clouds, 0, 100)
     
-    # 24h forecast simulation
-    if scenario == 'rainy':
-        mean_hum_24h = np.random.uniform(80, 95)
-        max_hum_24h = np.random.uniform(85, 98)
-        mean_pres_24h = pres + np.random.uniform(-3, 2)
-        pres_trend = np.random.uniform(-8, -2)
-        mean_clouds_24h = np.random.uniform(75, 95)
-        max_clouds_24h = np.random.uniform(85, 100)
-        total_rain = np.random.uniform(5, 30)
-        rain_steps = np.random.randint(3, 8)
-    elif scenario == 'cloudy':
-        mean_hum_24h = np.random.uniform(65, 80)
-        max_hum_24h = np.random.uniform(70, 88)
-        mean_pres_24h = pres + np.random.uniform(-2, 2)
-        pres_trend = np.random.uniform(-4, 1)
-        mean_clouds_24h = np.random.uniform(60, 80)
-        max_clouds_24h = np.random.uniform(70, 90)
-        total_rain = np.random.uniform(0, 5)
-        rain_steps = np.random.randint(0, 3)
-    else:  # clear
-        mean_hum_24h = np.random.uniform(45, 65)
-        max_hum_24h = np.random.uniform(55, 75)
-        mean_pres_24h = pres + np.random.uniform(-1, 3)
-        pres_trend = np.random.uniform(-2, 4)
-        mean_clouds_24h = np.random.uniform(20, 50)
-        max_clouds_24h = np.random.uniform(30, 60)
-        total_rain = 0
-        rain_steps = 0
+    # Calculate dew point with slight errors
+    a, b = 17.27, 237.7
+    try:
+        alpha = ((a * temp) / (b + temp)) + np.log(hum / 100.0)
+        dew_point = (b * alpha) / (a - alpha)
+    except:
+        dew_point = temp - ((100 - hum) / 5.0)
+    
+    # Determine rain label with probabilistic approach
+    rain_label = np.random.choice([0, 1], p=[1-scenarios[scenario_type]['rain_prob'], 
+                                              scenarios[scenario_type]['rain_prob']])
+    
+    # Generate forecast features with MORE noise and less perfect correlation
+    forecast_noise = np.random.uniform(0.9, 1.1)
+    measurement_error = np.random.normal(0, 2)
+    
+    if rain_label == 1:
+        mean_hum_24h = hum + np.random.normal(4, 6) + measurement_error
+        max_hum_24h = mean_hum_24h + np.random.uniform(2, 10)
+        mean_pres_24h = pres + np.random.normal(-3, 4)
+        pres_trend = np.random.normal(-6, 5)
+        mean_clouds_24h = clouds + np.random.normal(3, 6)
+        max_clouds_24h = mean_clouds_24h + np.random.uniform(1, 10)
+        total_rain = np.random.uniform(5, 30) if np.random.random() > 0.2 else np.random.uniform(0, 5)
+        rain_steps = np.random.randint(2, 8) if total_rain > 5 else np.random.randint(0, 3)
+    else:
+        mean_hum_24h = hum + np.random.normal(0, 8) + measurement_error
+        max_hum_24h = mean_hum_24h + np.random.uniform(0, 8)
+        mean_pres_24h = pres + np.random.normal(0, 4)
+        pres_trend = np.random.normal(0, 6)
+        mean_clouds_24h = clouds + np.random.normal(0, 8)
+        max_clouds_24h = mean_clouds_24h + np.random.uniform(0, 7)
+        total_rain = np.random.uniform(0, 3) if np.random.random() > 0.85 else 0
+        rain_steps = 1 if total_rain > 1 else 0
+    
+    # Ensure bounds
+    mean_hum_24h = np.clip(mean_hum_24h, 25, 100)
+    max_hum_24h = np.clip(max_hum_24h, mean_hum_24h, 100)
+    mean_clouds_24h = np.clip(mean_clouds_24h, 0, 100)
+    max_clouds_24h = np.clip(max_clouds_24h, mean_clouds_24h, 100)
+    total_rain = max(0, total_rain)
     
     X[i] = [
         temp, hum, pres, wind, clouds, dew_point,
@@ -74,43 +127,133 @@ for i in range(n):
         mean_clouds_24h, max_clouds_24h, total_rain, rain_steps
     ]
     
-    # Label: 1 if rain scenario, 0 otherwise
-    y[i] = 1 if scenario == 'rainy' else 0
+    y[i] = rain_label
 
 y = y.astype(int)
 
-print(f"📊 Dataset: {n} samples, {y.sum()} rain ({y.sum()/n*100:.1f}%), {n-y.sum()} no-rain ({(n-y.sum())/n*100:.1f}%)")
+# Shuffle the data to ensure randomness
+shuffle_idx = np.random.permutation(n_samples)
+X = X[shuffle_idx]
+y = y[shuffle_idx]
 
-# Train model
-print("🌲 Training Random Forest...")
-rf = RandomForestClassifier(
-    n_estimators=150,
-    max_depth=15,
-    min_samples_split=10,
-    min_samples_leaf=5,
-    max_features='sqrt',
-    class_weight='balanced',
-    n_jobs=-1,
-    random_state=42
+
+rain_count = y.sum()
+no_rain_count = len(y) - rain_count
+
+print(f"\nDataset Statistics:")
+print(f"  Total samples: {n_samples:,}")
+print(f"  Rain samples: {rain_count:,} ({rain_count/n_samples*100:.1f}%)")
+print(f"  No-rain samples: {no_rain_count:,} ({no_rain_count/n_samples*100:.1f}%)")
+
+# Split data with stratification
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.25, random_state=42, stratify=y, shuffle=True
 )
-rf.fit(X, y)
 
-print("📈 Calibrating probabilities...")
-model = CalibratedClassifierCV(rf, method='sigmoid', cv=5)
-model.fit(X, y)
+print(f"\nTrain set: {len(X_train):,} samples")
+print(f"Test set: {len(X_test):,} samples")
 
-# Test
-print("\n🧪 Test Cases:")
-tests = [
-    ("Sunny", [28, 55, 1018, 4, 25, 19, 58, 65, 1018, 1, 30, 40, 0, 0]),
-    ("Cloudy", [25, 72, 1012, 5, 70, 20, 75, 82, 1011, -2, 72, 85, 0.5, 1]),
-    ("Rainy", [23, 88, 1002, 8, 95, 21, 90, 96, 1000, -6, 92, 98, 15, 5]),
+# Train Random Forest with proper regularization
+print("\nTraining Random Forest Classifier with regularization...")
+rf = RandomForestClassifier(
+    n_estimators=100,           # Moderate number of trees
+    max_depth=12,               # Limit tree depth
+    min_samples_split=20,       # Require more samples to split
+    min_samples_leaf=10,        # Require more samples in leaves
+    max_features='sqrt',        # Use subset of features
+    max_samples=0.8,           # Bootstrap with 80% of data
+    class_weight='balanced',    # Handle class imbalance
+    bootstrap=True,
+    oob_score=True,            # Out-of-bag score for validation
+    n_jobs=-1,                 # Use all CPU cores
+    random_state=42,
+    verbose=0
+)
+
+rf.fit(X_train, y_train)
+
+print(f"Out-of-bag score: {rf.oob_score_:.4f}")
+
+# Evaluate on test set
+y_pred = rf.predict(X_test)
+y_pred_proba = rf.predict_proba(X_test)[:, 1]
+
+print("\nModel Performance on Test Set:")
+print(classification_report(y_test, y_pred, target_names=['No Rain', 'Rain'], digits=3))
+
+roc_auc = roc_auc_score(y_test, y_pred_proba)
+print(f"ROC AUC Score: {roc_auc:.4f}")
+
+cm = confusion_matrix(y_test, y_pred)
+tn, fp, fn, tp = cm.ravel()
+print(f"\nConfusion Matrix:")
+print(f"  True Negatives:  {tn:,}    False Positives: {fp:,}")
+print(f"  False Negatives: {fn:,}    True Positives:  {tp:,}")
+print(f"\nAccuracy: {(tn+tp)/(tn+fp+fn+tp):.3f}")
+print(f"Precision (Rain): {tp/(tp+fp) if (tp+fp) > 0 else 0:.3f}")
+print(f"Recall (Rain): {tp/(tp+fn) if (tp+fn) > 0 else 0:.3f}")
+
+# Calibrate probabilities for better probability estimates
+print("\nCalibrating probability predictions...")
+calibrated_model = CalibratedClassifierCV(
+    rf, 
+    method='isotonic',  # Better for non-parametric calibration
+    cv=3,              # Reduced for smaller dataset
+    n_jobs=-1
+)
+
+calibrated_model.fit(X_train, y_train)
+
+# Test calibrated model
+y_cal_proba = calibrated_model.predict_proba(X_test)[:, 1]
+cal_roc_auc = roc_auc_score(y_test, y_cal_proba)
+print(f"Calibrated ROC AUC Score: {cal_roc_auc:.4f}")
+
+# Test realistic scenarios
+print("\n" + "="*70)
+print("TESTING MODEL ON REALISTIC SCENARIOS")
+print("="*70)
+
+test_scenarios = [
+    ("Clear sunny day", [30, 50, 1020, 3, 15, 20, 52, 60, 1020, 2, 18, 28, 0, 0]),
+    ("Partly cloudy", [27, 65, 1015, 4, 45, 22, 68, 75, 1015, 0, 50, 65, 0, 0]),
+    ("Overcast conditions", [25, 75, 1010, 5, 80, 23, 78, 85, 1009, -2, 82, 90, 0.5, 1]),
+    ("Pre-rain conditions", [23, 82, 1005, 7, 88, 22, 85, 92, 1003, -5, 88, 95, 3, 2]),
+    ("Light rain expected", [21, 88, 1000, 8, 92, 20, 90, 95, 998, -7, 92, 97, 12, 5]),
+    ("Heavy rain conditions", [20, 93, 995, 10, 97, 19, 94, 97, 992, -10, 95, 99, 25, 7]),
 ]
-for name, feat in tests:
-    prob = model.predict_proba([feat])[0][1] * 100
-    print(f"   {name:10s} → {prob:5.1f}%")
+
+for scenario_name, features in test_scenarios:
+    prob = calibrated_model.predict_proba([features])[0][1]
+    print(f"  {scenario_name:25s} → {prob*100:5.1f}% rain probability")
+
+# Feature importance
+print("\n" + "="*70)
+print("TOP 10 MOST IMPORTANT FEATURES")
+print("="*70)
+
+feature_names = [
+    "Temperature", "Humidity", "Pressure", "Wind Speed", "Cloud Cover",
+    "Dew Point", "24h Mean Humidity", "24h Max Humidity", "24h Mean Pressure",
+    "24h Pressure Trend", "24h Mean Clouds", "24h Max Clouds",
+    "Total Forecast Rain", "Rain Steps Count"
+]
+
+importances = rf.feature_importances_
+indices = np.argsort(importances)[::-1]
+
+for i, idx in enumerate(indices, 1):
+    print(f"  {i:2d}. {feature_names[idx]:25s} {importances[idx]:.4f}")
+
+# Save model
+print("\n" + "="*70)
+print("SAVING MODEL")
+print("="*70)
 
 with open('rain_model.pkl', 'wb') as f:
-    pickle.dump(model, f)
+    pickle.dump(calibrated_model, f)
 
-print("\n✅ Model saved to rain_model.pkl")
+print("Model saved to: rain_model.pkl")
+print(f"Model size: {os.path.getsize('rain_model.pkl') / 1024:.1f} KB")
+print("\nTraining complete!")
+print("="*70)
