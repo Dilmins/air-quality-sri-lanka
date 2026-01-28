@@ -26,7 +26,7 @@ api_calls_date = datetime.now().date()
 API_CALL_LIMIT = 950
 
 CITIES = {
-    "Colombo": {"lat": 6.9271, "lon": 79.8612},
+   "Colombo": {"lat": 6.9271, "lon": 79.8612},
     "Kandy": {"lat": 7.2906, "lon": 80.6337},
     "Galle": {"lat": 6.0535, "lon": 80.2210},
     "Jaffna": {"lat": 9.6615, "lon": 80.0255},

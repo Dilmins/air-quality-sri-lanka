@@ -462,8 +462,7 @@
                 document.getElementById('total-predictions').textContent = total;
                 document.getElementById('verified-count').textContent = verified;
                 document.getElementById('ready-count').textContent = ready;
-                document.getElementById('api-calls').textContent = 
-                    `${statsData.api_calls_today || 0}/${statsData.api_limit || 950}`;
+                document.getElementById('api-calls').textContent = statsData.api_calls_today || 0;
                 
                 // Render predictions
                 const container = document.getElementById('predictions-list');
@@ -471,10 +470,28 @@
                 if (predictions.length === 0) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-state-icon">📊</div>
-                            <p>No predictions yet. System will start logging predictions automatically.</p>
+                            <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+                            <h3 style="margin-bottom: 8px; color: var(--navy);">No Predictions Yet</h3>
+                            <p>System is logging predictions automatically every 10 minutes.</p>
+                            <p style="margin-top: 8px; color: var(--gray); font-size: 13px;">First prediction should appear within 10 minutes.</p>
                         </div>
                     `;
+                    return;
+                }
+                
+                const readyCount = predictions.filter(p => p.ready_to_verify).length;
+                
+                if (readyCount === 0) {
+                    container.innerHTML = `
+                        <div class="alert alert-info" style="margin-bottom: 20px;">
+                            <strong>Waiting Period:</strong> Predictions need to be at least 24 hours old before verification.
+                            <br>This ensures you're verifying the full 24-hour forecast period.
+                            <br><br>
+                            <strong>Tomorrow at this time:</strong> Your first predictions will be ready to verify!
+                        </div>
+                        <div class="prediction-list">` +
+                        predictions.map(p => renderPrediction(p)).join('') +
+                        '</div>';
                     return;
                 }
                 
