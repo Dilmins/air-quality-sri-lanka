@@ -26,7 +26,7 @@ api_calls_date = datetime.now().date()
 API_CALL_LIMIT = 950
 
 CITIES = {
-   "Colombo": {"lat": 6.9271, "lon": 79.8612},
+    "Colombo": {"lat": 6.9271, "lon": 79.8612},
     "Kandy": {"lat": 7.2906, "lon": 80.6337},
     "Galle": {"lat": 6.0535, "lon": 80.2210},
     "Jaffna": {"lat": 9.6615, "lon": 80.0255},
@@ -46,7 +46,22 @@ CITIES = {
     "Panadura": {"lat": 6.7133, "lon": 79.9026},
     "Tokyo": {"lat": 35.6762, "lon": 139.6503},
     "Osaka": {"lat": 34.6937, "lon": 135.5023},
-    "Hiroshima": {"lat": 34.3853, "lon": 132.4553}
+    "Hiroshima": {"lat": 34.3853, "lon": 132.4553},
+    "Dubai": {"lat": 25.2048, "lon": 55.2708},
+    "Uganda": {"lat": 1.3733, "lon": 32.2903},
+    "Guyana": {"lat": 4.8604, "lon": -58.9302},
+    "Malaysia": {"lat": 4.2105, "lon": 101.9758},
+    "Thailand": {"lat": 15.8700, "lon": 100.9925},
+    "Bambarabatuoya MHPP": {"lat": 6.7014, "lon": 80.5097},
+    "Batathota MHPP": {"lat": 6.8126, "lon": 80.3757},
+    "Wembiyagoda MHPP": {"lat": 6.5176, "lon": 80.4132},
+    "Lower Kotmale Oya MHPP": {"lat": 7.0332, "lon": 80.6508},
+    "Rideepana MHPP": {"lat": 7.0093, "lon": 81.0640},
+    "Udawela MHPP": {"lat": 7.0564, "lon": 81.0608},
+    "Madugeta MHPP": {"lat": 6.3706, "lon": 80.4088},
+    "Ethamala Ella MHPP": {"lat": 6.2269, "lon": 80.4979},
+    "Muvumbe SHPP": {"lat": -1.3186, "lon": 30.0789},
+    "Bukinda SHPP": {"lat": -1.2411, "lon": 29.9861}
 }
 
 current_city = "Colombo"
