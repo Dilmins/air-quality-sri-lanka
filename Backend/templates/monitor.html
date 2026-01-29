@@ -369,6 +369,97 @@
             margin: 24px 0;
             color: var(--accent);
         }
+
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+            
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            
+            .nav-link {
+                width: 100%;
+                text-align: center;
+            }
+            
+            h1 { font-size: 20px; }
+            
+            .tabs {
+                width: 100%;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .tab {
+                padding: 10px 16px;
+                font-size: 13px;
+                white-space: nowrap;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+            
+            .stat-value {
+                font-size: 28px;
+            }
+            
+            .stat-label {
+                font-size: 11px;
+            }
+            
+            .card {
+                padding: 16px;
+            }
+            
+            .card-title {
+                font-size: 16px;
+            }
+            
+            .prediction-details {
+                grid-template-columns: 1fr 1fr;
+            }
+            
+            .verify-actions {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+            
+            .confusion-matrix {
+                grid-template-columns: 80px 1fr 1fr;
+                font-size: 12px;
+            }
+            
+            .cm-value {
+                font-size: 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .prediction-details {
+                grid-template-columns: 1fr;
+            }
+            
+            .tabs {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .tab {
+                width: 100%;
+                text-align: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -410,6 +501,8 @@
             </div>
 
             <div id="alert-container"></div>
+
+            <div id="limit-notification"></div>
 
             <div class="card">
                 <h2 class="card-title">Recent Predictions</h2>
@@ -455,7 +548,7 @@
                 predictions = predData.predictions || [];
                 
                 // Update stats
-                const total = predictions.length;
+                const total = statsData.total_predictions || predictions.length;
                 const verified = predictions.filter(p => p.verified).length;
                 const ready = predictions.filter(p => p.ready_to_verify).length;
                 
@@ -463,6 +556,36 @@
                 document.getElementById('verified-count').textContent = verified;
                 document.getElementById('ready-count').textContent = ready;
                 document.getElementById('api-calls').textContent = statsData.api_calls_today || 0;
+                
+                // Show limit notification
+                const limitNotif = document.getElementById('limit-notification');
+                if (statsData.limit_reached) {
+                    if (statsData.ready_to_verify > 0) {
+                        limitNotif.innerHTML = `
+                            <div class="alert alert-success" style="margin-bottom: 20px;">
+                                <strong>✓ Collection Complete!</strong> Reached 50 predictions. 
+                                ${statsData.ready_to_verify} predictions are ready to verify below.
+                            </div>
+                        `;
+                    } else {
+                        const hoursLeft = statsData.hours_until_ready || 0;
+                        limitNotif.innerHTML = `
+                            <div class="alert alert-info" style="margin-bottom: 20px;">
+                                <strong>⏳ Collection Complete!</strong> Reached 50/50 predictions. 
+                                <br><strong>Time until verification:</strong> ${hoursLeft.toFixed(1)} hours remaining
+                                <br><small>System now shows live data without logging new predictions. Timer preserved across redeploys.</small>
+                            </div>
+                        `;
+                    }
+                } else {
+                    const remaining = 50 - total;
+                    limitNotif.innerHTML = `
+                        <div class="alert alert-info" style="margin-bottom: 20px;">
+                            <strong>📊 Collection in Progress:</strong> ${total}/50 predictions collected. 
+                            ${remaining} more needed.
+                        </div>
+                    `;
+                }
                 
                 // Render predictions
                 const container = document.getElementById('predictions-list');
@@ -481,13 +604,25 @@
                 
                 const readyCount = predictions.filter(p => p.ready_to_verify).length;
                 
-                if (readyCount === 0) {
+                if (readyCount === 0 && total >= 50) {
+                    const hoursLeft = statsData.hours_until_ready || 0;
                     container.innerHTML = `
                         <div class="alert alert-info" style="margin-bottom: 20px;">
-                            <strong>Waiting Period:</strong> Predictions need to be at least 24 hours old before verification.
-                            <br>This ensures you're verifying the full 24-hour forecast period.
+                            <strong>⏰ Aging Period:</strong> Your 50 predictions are aging to 12 hours.
                             <br><br>
-                            <strong>Tomorrow at this time:</strong> Your first predictions will be ready to verify!
+                            <strong>Time remaining:</strong> ${hoursLeft.toFixed(1)} hours
+                            <br><br>
+                            <small>All predictions below maintain their original timestamps. Redeploying code won't reset the timer.</small>
+                        </div>
+                        <div class="prediction-list">` +
+                        predictions.map(p => renderPrediction(p)).join('') +
+                        '</div>';
+                    return;
+                } else if (readyCount === 0) {
+                    container.innerHTML = `
+                        <div class="alert alert-info" style="margin-bottom: 20px;">
+                            <strong>📝 Collection Phase:</strong> Predictions need 12 hours before verification.
+                            <br>Continue collecting until 50 predictions are reached.
                         </div>
                         <div class="prediction-list">` +
                         predictions.map(p => renderPrediction(p)).join('') +

@@ -414,11 +414,59 @@ def background_updater():
     time.sleep(10)
     while True:
         try:
-            data = system.update()
-            if data:
-                latest_data = data
+            # Check if we've hit the 50 prediction limit
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM predictions")
+            total_predictions = c.fetchone()[0]
+            conn.close()
+            
+            if total_predictions >= 50:
+                # Stop making new predictions, just update display data without logging
+                logger.info(f"Prediction limit reached ({total_predictions}/50). Updating display only.")
+                
+                # Fetch data for display but don't log new predictions
+                aqi_data = fetch_outdoor_aqi(system.lat, system.lon, system.api_key)
+                weather_data = fetch_weather(system.lat, system.lon, system.api_key)
+                
+                if aqi_data and weather_data:
+                    # Just update the display data without creating prediction
+                    timestamp = datetime.now()
+                    features = engineer_features(aqi_data, weather_data, timestamp)
+                    
+                    if features is not None:
+                        indoor_aqi = system.regressor.predict(features)
+                        is_anomaly = system.anomaly_detector.detect(features)
+                        outdoor_aqi = float(aqi_data['aqi'] * 50)
+                        
+                        recommendation, explanation, metadata = system.recommender.recommend(
+                            indoor_aqi, outdoor_aqi, weather_data['temp'],
+                            weather_data['humidity'], weather_data['wind_speed'],
+                            is_anomaly, 0.0
+                        )
+                        
+                        latest_data = {
+                            'outdoor_aqi': float(outdoor_aqi), 'temp': float(weather_data['temp']),
+                            'humidity': float(weather_data['humidity']), 'wind_speed': float(weather_data['wind_speed']),
+                            'pressure': float(weather_data['pressure']), 'clouds': float(weather_data['clouds']),
+                            'indoor_aqi': float(indoor_aqi), 'indoor_risk': str(metadata['indoor_risk']),
+                            'outdoor_risk': str(metadata['outdoor_risk']), 'is_anomaly': bool(is_anomaly),
+                            'rain_probability_24h': 0.0, 'rain_risk_curve': [],
+                            'recommendation': str(recommendation), 'explanation': str(explanation),
+                            'timestamp': timestamp.isoformat(), 'city': current_city,
+                            'limit_reached': True, 'total_predictions': total_predictions
+                        }
+            else:
+                # Normal operation - collect predictions
+                data = system.update()
+                if data:
+                    data['limit_reached'] = False
+                    data['total_predictions'] = total_predictions + 1
+                    latest_data = data
+                    
         except Exception as e:
             logger.error(f"Update error: {e}")
+        
         time.sleep(600)
 
 thread = threading.Thread(target=background_updater, daemon=True)
@@ -454,12 +502,38 @@ def get_stats():
         total = c.fetchone()[0]
         c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
         verified = c.fetchone()[0]
+        
+        # Check for predictions ready to verify
+        c.execute('''SELECT COUNT(*) FROM predictions 
+                     WHERE actual_rain IS NULL 
+                     AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
+        ready = c.fetchone()[0]
+        
+        # Get oldest unverified prediction time
+        c.execute('''SELECT timestamp FROM predictions 
+                     WHERE actual_rain IS NULL 
+                     ORDER BY timestamp ASC LIMIT 1''')
+        oldest = c.fetchone()
+        oldest_time = oldest[0] if oldest else None
+        
+        hours_until_ready = 0
+        if oldest_time and ready == 0:
+            oldest_dt = datetime.fromisoformat(oldest_time)
+            elapsed = (datetime.now() - oldest_dt).total_seconds() / 3600
+            hours_until_ready = max(0, 12 - elapsed)
+        
         conn.close()
+        
+        limit_reached = total >= 50
+        
         return jsonify({
             'api_calls_today': api_calls_today, 'api_limit': API_CALL_LIMIT,
-            'total_predictions': total, 'verified_predictions': verified
+            'total_predictions': total, 'verified_predictions': verified,
+            'ready_to_verify': ready, 'limit_reached': limit_reached,
+            'hours_until_ready': round(hours_until_ready, 1)
         })
-    except:
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
         return jsonify({'error': 'Stats error'}), 500
 
 @app.route('/api/predictions/recent')
@@ -480,7 +554,7 @@ def get_recent():
                 'hours_ago': round(hours_ago, 1), 'city': row[2], 'rain_probability': round(row[3] * 100, 1),
                 'temp': round(row[4], 1), 'humidity': round(row[5]), 'clouds': round(row[6]),
                 'recommendation': row[7], 'actual_rain': row[8], 'verified': row[8] is not None,
-                'ready_to_verify': hours_ago >= 24 and row[8] is None
+                'ready_to_verify': hours_ago >= 12 and row[8] is None
             })
         conn.close()
         return jsonify({'predictions': predictions})
