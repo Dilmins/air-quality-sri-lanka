@@ -26,7 +26,6 @@ api_calls_date = datetime.now().date()
 API_CALL_LIMIT = 950
 
 CITIES = {
-    "Sri Lankan Cities": {
         "Colombo": {"lat": 6.9271, "lon": 79.8612},
         "Kandy": {"lat": 7.2906, "lon": 80.6337},
         "Galle": {"lat": 6.0535, "lon": 80.2210},
@@ -45,9 +44,7 @@ CITIES = {
         "Nalluruwa": {"lat": 6.7000, "lon": 79.9167},
         "Mirigama": {"lat": 7.2382, "lon": 80.1262},
         "Panadura": {"lat": 6.7133, "lon": 79.9026},
-        "Rajagiriya": {"lat": 6.9089, "lon": 79.8911}
-    },
-    "International Locations": {
+        "Rajagiriya": {"lat": 6.9089, "lon": 79.8911},
         "Tokyo": {"lat": 35.6762, "lon": 139.6503},
         "Osaka": {"lat": 34.6937, "lon": 135.5023},
         "Hiroshima": {"lat": 34.3853, "lon": 132.4553},
@@ -55,9 +52,7 @@ CITIES = {
         "Uganda": {"lat": 1.3733, "lon": 32.2903},
         "Guyana": {"lat": 4.8604, "lon": -58.9302},
         "Malaysia": {"lat": 4.2105, "lon": 101.9758},
-        "Thailand": {"lat": 15.8700, "lon": 100.9925}
-    },
-    "Vidullanka PLC MHPPs": {
+        "Thailand": {"lat": 15.8700, "lon": 100.9925},
         "Bambarabatuoya MHPP": {"lat": 6.7014, "lon": 80.5097},
         "Batathota MHPP": {"lat": 6.8126, "lon": 80.3757},
         "Wembiyagoda MHPP": {"lat": 6.5176, "lon": 80.4132},
@@ -68,7 +63,6 @@ CITIES = {
         "Ethamala Ella MHPP": {"lat": 6.2269, "lon": 80.4979},
         "Muvumbe SHPP": {"lat": -1.3186, "lon": 30.0789},
         "Bukinda SHPP": {"lat": -1.1858, "lon": 30.1206}
-    }  
 }
 
 current_city = "Colombo"
