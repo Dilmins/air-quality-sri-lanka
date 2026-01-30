@@ -19,7 +19,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
-DB_PATH = "monitoring.db"
+import os
+from pathlib import Path
+
+# IMPORTANT: SQLite on Railway is NOT persistent
+# Database will reset on every deploy unless you add PostgreSQL
+# See POWERSHELL_FIX.md for instructions
+BASE_DIR = Path(__file__).parent.absolute()
+DB_PATH = str(BASE_DIR / "monitoring.db")
+
+print(f"⚠️  WARNING: Using SQLite at {DB_PATH}")
+print(f"⚠️  Data will be LOST on redeploy unless you switch to PostgreSQL")
+print(f"⚠️  Run: railway add → select PostgreSQL to fix this")
 
 api_calls_today = 0
 api_calls_date = datetime.now().date()
