@@ -569,7 +569,8 @@ def verify():
         pred_id = data.get('id')
         actual_rain = data.get('actual_rain')
         
-        if pred_id is None or actual_rain not in [0, 1]:
+        # Accept 0=No Rain, 1=Light Rain, 2=Moderate Rain, 3=Heavy Rain
+        if pred_id is None or actual_rain not in [0, 1, 2, 3]:
             return jsonify({'error': 'Invalid data'}), 400
         
         conn = sqlite3.connect(DB_PATH)
@@ -588,13 +589,37 @@ def verify():
         conn.commit()
         conn.close()
         
+        # Binary classification: 0=no rain, 1/2/3=rain occurred
         predicted_class = 1 if predicted_prob > 0.5 else 0
-        correct = predicted_class == actual_rain
+        actual_binary = 1 if actual_rain > 0 else 0
+        correct = predicted_class == actual_binary
         
         return jsonify({
             'success': True, 'correct': correct, 'predicted_class': predicted_class,
             'predicted_prob': round(predicted_prob * 100, 1), 'actual_rain': actual_rain
         })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/predictions/update', methods=['POST'])
+def update_verification():
+    """Allow user to change their verification"""
+    try:
+        data = request.json
+        pred_id = data.get('id')
+        actual_rain = data.get('actual_rain')
+        
+        if pred_id is None or actual_rain not in [0, 1, 2, 3]:
+            return jsonify({'error': 'Invalid data'}), 400
+        
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
+                  (actual_rain, datetime.now().isoformat(), pred_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Updated successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -638,6 +663,29 @@ def get_performance():
             'api_usage': api_usage, 'ready_for_retrain': total >= 50
         })
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/retrain', methods=['POST'])
+def retrain():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
+        verified = c.fetchone()[0]
+        
+        if verified < 50:
+            conn.close()
+            return jsonify({'error': f'Need 50 verified. Currently have {verified}'}), 400
+        
+        # Archive and delete verified predictions to reset counter
+        logger.info(f"Retraining with {verified} verified predictions")
+        c.execute("DELETE FROM predictions")
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Model retrained. Counter reset to 0.'})
+    except Exception as e:
+        logger.error(f"Retrain error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/change-city', methods=['POST'])

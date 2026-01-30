@@ -907,9 +907,8 @@
             if (data.limit_reached) {
                 banner.innerHTML = `
                     <div style="background: #EFF6FF; border: 1px solid #3B82F6; border-radius: 8px; padding: 12px 16px; margin-top: 16px; font-size: 14px; color: #1E40AF;">
-                        <strong>📊 Data Collection Complete:</strong> Reached 50/50 predictions. 
-                        System now displays live data without logging new predictions. 
-                        <a href="/monitor" style="color: #3B82F6; font-weight: 600; text-decoration: underline;">Verify predictions →</a>
+                        <strong>Training Dataset Complete:</strong> 50 predictions collected and ready for verification.
+                        <a href="/monitor" style="color: #3B82F6; font-weight: 600; text-decoration: underline;">View verification panel</a>
                     </div>
                 `;
             } else if (data.total_predictions) {

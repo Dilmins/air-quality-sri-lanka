@@ -563,17 +563,15 @@
                     if (statsData.ready_to_verify > 0) {
                         limitNotif.innerHTML = `
                             <div class="alert alert-success" style="margin-bottom: 20px;">
-                                <strong>✓ Collection Complete!</strong> Reached 50 predictions. 
-                                ${statsData.ready_to_verify} predictions are ready to verify below.
+                                <strong>Dataset Complete:</strong> 50 predictions ready for verification.
                             </div>
                         `;
                     } else {
                         const hoursLeft = statsData.hours_until_ready || 0;
                         limitNotif.innerHTML = `
                             <div class="alert alert-info" style="margin-bottom: 20px;">
-                                <strong>⏳ Collection Complete!</strong> Reached 50/50 predictions. 
-                                <br><strong>Time until verification:</strong> ${hoursLeft.toFixed(1)} hours remaining
-                                <br><small>System now shows live data without logging new predictions. Timer preserved across redeploys.</small>
+                                <strong>Dataset Complete:</strong> 50 predictions collected.
+                                <br><strong>Verification available in:</strong> ${hoursLeft.toFixed(1)} hours
                             </div>
                         `;
                     }
@@ -581,8 +579,7 @@
                     const remaining = 50 - total;
                     limitNotif.innerHTML = `
                         <div class="alert alert-info" style="margin-bottom: 20px;">
-                            <strong>📊 Collection in Progress:</strong> ${total}/50 predictions collected. 
-                            ${remaining} more needed.
+                            <strong>Data Collection:</strong> ${total} of 50 predictions recorded. ${remaining} remaining.
                         </div>
                     `;
                 }
@@ -608,11 +605,9 @@
                     const hoursLeft = statsData.hours_until_ready || 0;
                     container.innerHTML = `
                         <div class="alert alert-info" style="margin-bottom: 20px;">
-                            <strong>⏰ Aging Period:</strong> Your 50 predictions are aging to 12 hours.
+                            <strong>Verification Window:</strong> Predictions must age for 12 hours to ensure accurate verification.
                             <br><br>
                             <strong>Time remaining:</strong> ${hoursLeft.toFixed(1)} hours
-                            <br><br>
-                            <small>All predictions below maintain their original timestamps. Redeploying code won't reset the timer.</small>
                         </div>
                         <div class="prediction-list">` +
                         predictions.map(p => renderPrediction(p)).join('') +
@@ -621,8 +616,7 @@
                 } else if (readyCount === 0) {
                     container.innerHTML = `
                         <div class="alert alert-info" style="margin-bottom: 20px;">
-                            <strong>📝 Collection Phase:</strong> Predictions need 12 hours before verification.
-                            <br>Continue collecting until 50 predictions are reached.
+                            <strong>Collection Phase:</strong> Predictions require a 12-hour period before verification. Continue collecting data.
                         </div>
                         <div class="prediction-list">` +
                         predictions.map(p => renderPrediction(p)).join('') +
@@ -647,7 +641,7 @@
                 '<span class="badge badge-verified">✓ Verified</span>' :
                 p.ready_to_verify ?
                 '<span class="badge badge-ready">Ready to Verify</span>' :
-                '<span class="badge badge-pending">Pending (wait 24h)</span>';
+                '<span class="badge badge-pending">Pending (wait 12h)</span>';
             
             return `
                 <div class="prediction-item ${statusClass}">
@@ -679,16 +673,24 @@
                     </div>
                     ${p.verified ? `
                         <div class="alert alert-success" style="margin-top: 12px;">
-                            Verified: ${p.actual_rain === 1 ? 'Rain occurred' : 'No rain'} 
-                            ${(p.actual_rain === 1 && p.rain_probability > 50) || (p.actual_rain === 0 && p.rain_probability <= 50) ? '✓ Correct' : '✗ Incorrect'}
+                            Verified: ${getRainLabel(p.actual_rain)}
+                            <button class="btn" style="background: var(--gray); color: white; padding: 4px 12px; font-size: 12px; margin-left: 12px;" onclick="editVerification(${p.id}, ${p.actual_rain})">
+                                Edit
+                            </button>
                         </div>
                     ` : p.ready_to_verify ? `
                         <div class="verify-actions">
-                            <button class="btn btn-success" onclick="verifyPrediction(${p.id}, 1)">
-                                Yes, it rained
+                            <button class="btn" style="background: #10B981; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 0)">
+                                No Rain
                             </button>
-                            <button class="btn btn-danger" onclick="verifyPrediction(${p.id}, 0)">
-                                No, it didn't rain
+                            <button class="btn" style="background: #3B82F6; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 1)">
+                                Light Rain
+                            </button>
+                            <button class="btn" style="background: #F59E0B; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 2)">
+                                Moderate
+                            </button>
+                            <button class="btn" style="background: #EF4444; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 3)">
+                                Heavy Rain
                             </button>
                         </div>
                     ` : ''}
@@ -697,9 +699,26 @@
         }
 
         async function verifyPrediction(id, actualRain) {
+            const alertContainer = document.getElementById('alert-container');
+            
+            // Show confirmation with edit option
+            alertContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <strong>Confirm your selection:</strong> ${getRainLabel(actualRain)}
+                    <div style="margin-top: 12px; display: flex; gap: 12px;">
+                        <button class="btn btn-success" onclick="confirmVerification(${id}, ${actualRain})">
+                            Confirm
+                        </button>
+                        <button class="btn" style="background: var(--gray); color: white;" onclick="document.getElementById('alert-container').innerHTML = ''; loadPredictions();">
+                            Change Answer
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function confirmVerification(id, actualRain) {
             try {
-                const alertContainer = document.getElementById('alert-container');
-                
                 const response = await fetch('/api/predictions/verify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -707,6 +726,7 @@
                 });
                 
                 const data = await response.json();
+                const alertContainer = document.getElementById('alert-container');
                 
                 if (data.success) {
                     const correct = data.correct ? 'Correct' : 'Incorrect';
@@ -714,7 +734,7 @@
                     
                     alertContainer.innerHTML = `
                         <div class="alert ${alertClass}">
-                            ${correct} prediction! Predicted: ${data.predicted_prob}%, Actual: ${actualRain === 1 ? 'Rain' : 'No Rain'}
+                            ${correct} prediction! Predicted: ${data.predicted_prob}%, Actual: ${getRainLabel(actualRain)}
                         </div>
                     `;
                     
@@ -728,6 +748,63 @@
                 document.getElementById('alert-container').innerHTML = 
                     '<div class="alert alert-danger">Verification failed</div>';
             }
+        }
+
+        async function editVerification(id, currentRain) {
+            const alertContainer = document.getElementById('alert-container');
+            alertContainer.innerHTML = `
+                <div class="alert alert-info">
+                    <strong>Change verification for this prediction:</strong>
+                    <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn" style="background: #10B981; color: white;" onclick="updateVerification(${id}, 0)">
+                            No Rain
+                        </button>
+                        <button class="btn" style="background: #3B82F6; color: white;" onclick="updateVerification(${id}, 1)">
+                            Light Rain
+                        </button>
+                        <button class="btn" style="background: #F59E0B; color: white;" onclick="updateVerification(${id}, 2)">
+                            Moderate Rain
+                        </button>
+                        <button class="btn" style="background: #EF4444; color: white;" onclick="updateVerification(${id}, 3)">
+                            Heavy Rain
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function updateVerification(id, actualRain) {
+            try {
+                const response = await fetch('/api/predictions/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, actual_rain: actualRain })
+                });
+                
+                const data = await response.json();
+                const alertContainer = document.getElementById('alert-container');
+                
+                if (data.success) {
+                    alertContainer.innerHTML = `
+                        <div class="alert alert-success">
+                            ${data.message}
+                        </div>
+                    `;
+                    setTimeout(() => alertContainer.innerHTML = '', 3000);
+                    loadPredictions();
+                } else {
+                    alertContainer.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                console.error('Error updating:', error);
+                document.getElementById('alert-container').innerHTML = 
+                    '<div class="alert alert-danger">Update failed</div>';
+            }
+        }
+
+        function getRainLabel(value) {
+            const labels = ['No Rain', 'Light Rain (drizzle)', 'Moderate Rain', 'Heavy Rain'];
+            return labels[value] || 'Unknown';
         }
 
         async function loadPerformance() {
@@ -768,23 +845,6 @@
                         <div class="stat-card">
                             <div class="stat-label">F1 Score</div>
                             <div class="stat-value">${data.f1_score}%</div>
-                        </div>
-                    </div>
-                    
-                    <div class="card">
-                        <h2 class="card-title">Confusion Matrix</h2>
-                        <div class="confusion-matrix">
-                            <div class="cm-cell cm-header"></div>
-                            <div class="cm-cell cm-header">Predicted No Rain</div>
-                            <div class="cm-cell cm-header">Predicted Rain</div>
-                            
-                            <div class="cm-cell cm-header">Actual No Rain</div>
-                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.true_negatives}</div><div style="font-size: 12px; color: var(--gray);">True Negatives</div></div>
-                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.false_positives}</div><div style="font-size: 12px; color: var(--gray);">False Positives</div></div>
-                            
-                            <div class="cm-cell cm-header">Actual Rain</div>
-                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.false_negatives}</div><div style="font-size: 12px; color: var(--gray);">False Negatives</div></div>
-                            <div class="cm-cell"><div class="cm-value">${data.confusion_matrix.true_positives}</div><div style="font-size: 12px; color: var(--gray);">True Positives</div></div>
                         </div>
                     </div>
                     
@@ -856,28 +916,28 @@
         }
 
         async function triggerRetrain() {
-            if (!confirm('Start retraining? This will take 2-5 minutes.')) return;
+            if (!confirm('Start retraining? This will reset the counter and train with your verified data.')) return;
             
             const btn = document.getElementById('retrain-btn');
             btn.disabled = true;
-            btn.textContent = 'Retraining...';
+            btn.textContent = 'Processing...';
             
             try {
                 const response = await fetch('/api/retrain', { method: 'POST' });
                 const data = await response.json();
                 
                 if (data.success) {
-                    alert('Retraining started! Check back in 5 minutes. The system will continue working normally.');
-                    loadRetrainStatus();
+                    alert(data.message);
+                    window.location.reload(); // Reload to show reset counter
                 } else {
                     alert('Error: ' + (data.error || 'Retraining failed'));
                     btn.disabled = false;
-                    btn.textContent = 'Retrain Model Now';
+                    btn.textContent = 'Start Retraining';
                 }
             } catch (error) {
-                alert('Retraining failed. Check server logs.');
+                alert('Retraining failed: ' + error.message);
                 btn.disabled = false;
-                btn.textContent = 'Retrain Model Now';
+                btn.textContent = 'Start Retraining';
             }
         }
 
