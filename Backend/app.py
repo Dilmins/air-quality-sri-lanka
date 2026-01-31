@@ -131,11 +131,14 @@ def init_database():
     conn.close()
     print("✅ Database initialized")
 
-# Wrapper for sqlite3.connect calls
+# Wrapper to redirect all sqlite3.connect to get_db()
+import sqlite3
+_original_sqlite_connect = sqlite3.connect
 if USE_POSTGRES:
-    import sqlite3
-    _orig = sqlite3.connect
-    sqlite3.connect = lambda p: get_db()
+    sqlite3.connect = lambda path: get_db()
+else:
+    # Define DB_PATH for SQLite mode
+    pass
 
 init_database()
 
@@ -153,9 +156,12 @@ def log_api_call():
 
 def log_prediction(data: Dict):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
+                     humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
+                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''' if USE_POSTGRES else
+                  '''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
                      humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                   (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
