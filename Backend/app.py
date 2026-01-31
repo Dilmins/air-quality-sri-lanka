@@ -21,27 +21,24 @@ logger = logging.getLogger(__name__)
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
 import os
 from pathlib import Path
+import glob
 
-# Railway mounts volumes at /var/lib/containers/railwayapp/bind-mounts/...
-# Check all common Railway volume paths
-VOLUME_PATHS = [
-    Path("/var/lib/containers/railwayapp/bind-mounts"),
-    Path("/data"),
-    Path("/app/data")
-]
-
+# Railway mounts volumes with unique IDs - find the actual mount
+mount_base = "/var/lib/containers/railwayapp/bind-mounts"
 DB_PATH = None
-for vol_path in VOLUME_PATHS:
-    if vol_path.exists():
-        vol_path.mkdir(parents=True, exist_ok=True)
+
+if os.path.exists(mount_base):
+    # Find any volume mount (vol_*)
+    volume_dirs = glob.glob(f"{mount_base}/*/vol_*")
+    if volume_dirs:
+        vol_path = Path(volume_dirs[0])
         DB_PATH = str(vol_path / "monitoring.db")
         print(f"✅ Using persistent volume: {DB_PATH}")
-        break
 
 if not DB_PATH:
     BASE_DIR = Path(__file__).parent.absolute()
     DB_PATH = str(BASE_DIR / "monitoring.db")
-    print(f"⚠️ Using ephemeral SQLite: {DB_PATH} (data will be lost on redeploy)")
+    print(f"⚠️ Using ephemeral SQLite: {DB_PATH} (data lost on redeploy)")
 
 api_calls_today = 0
 api_calls_date = datetime.now().date()
