@@ -22,15 +22,16 @@ API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
 import os
 from pathlib import Path
 
-# IMPORTANT: SQLite on Railway is NOT persistent
-# Database will reset on every deploy unless you add PostgreSQL
-# See POWERSHELL_FIX.md for instructions
-BASE_DIR = Path(__file__).parent.absolute()
-DB_PATH = str(BASE_DIR / "monitoring.db")
-
-print(f"⚠️  WARNING: Using SQLite at {DB_PATH}")
-print(f"⚠️  Data will be LOST on redeploy unless you switch to PostgreSQL")
-print(f"⚠️  Run: railway add → select PostgreSQL to fix this")
+# Use Railway volume for persistence
+VOLUME_PATH = Path("/var/lib/railway/data")
+if VOLUME_PATH.exists():
+    VOLUME_PATH.mkdir(parents=True, exist_ok=True)
+    DB_PATH = str(VOLUME_PATH / "monitoring.db")
+    print(f"✅ Using persistent volume: {DB_PATH}")
+else:
+    BASE_DIR = Path(__file__).parent.absolute()
+    DB_PATH = str(BASE_DIR / "monitoring.db")
+    print(f"⚠️ Using local SQLite: {DB_PATH}")
 
 api_calls_today = 0
 api_calls_date = datetime.now().date()
