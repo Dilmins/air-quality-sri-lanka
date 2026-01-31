@@ -21,36 +21,20 @@ logger = logging.getLogger(__name__)
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
 import os
 from pathlib import Path
-import glob
 
-# Debug: Print all environment variables with RAILWAY
-print("=== RAILWAY ENV VARS ===")
-for key, value in os.environ.items():
-    if 'RAILWAY' in key or 'VOLUME' in key or 'MOUNT' in key:
-        print(f"{key}={value}")
+# Railway volume is mounted at PostgreSQL data dir - use subdirectory
+volume_mount = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
 
-# Try to find volume mount
-mount_base = "/var/lib/containers/railwayapp/bind-mounts"
-DB_PATH = None
-
-if os.path.exists(mount_base):
-    volume_dirs = glob.glob(f"{mount_base}/*/vol_*")
-    print(f"Found volume dirs: {volume_dirs}")
-    if volume_dirs:
-        vol_path = Path(volume_dirs[0])
-        DB_PATH = str(vol_path / "monitoring.db")
-        print(f"✅ PERSISTENT: {DB_PATH}")
-
-if not DB_PATH:
-    # Fallback - check RAILWAY_VOLUME_MOUNT_PATH env var
-    volume_mount = os.environ.get('RAILWAY_VOLUME_MOUNT_PATH')
-    if volume_mount:
-        DB_PATH = str(Path(volume_mount) / "monitoring.db")
-        print(f"✅ PERSISTENT (env): {DB_PATH}")
-    else:
-        BASE_DIR = Path(__file__).parent.absolute()
-        DB_PATH = str(BASE_DIR / "monitoring.db")
-        print(f"⚠️ EPHEMERAL: {DB_PATH}")
+if volume_mount:
+    # Create app-specific subdirectory in volume
+    db_dir = Path(volume_mount) / "app_data"
+    db_dir.mkdir(parents=True, exist_ok=True)
+    DB_PATH = str(db_dir / "monitoring.db")
+    print(f"✅ PERSISTENT: {DB_PATH}")
+else:
+    BASE_DIR = Path(__file__).parent.absolute()
+    DB_PATH = str(BASE_DIR / "monitoring.db")
+    print(f"⚠️ EPHEMERAL: {DB_PATH}")
 
 api_calls_today = 0
 api_calls_date = datetime.now().date()
