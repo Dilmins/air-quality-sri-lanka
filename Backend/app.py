@@ -22,29 +22,23 @@ API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
 import os
 from pathlib import Path
 
-# Supabase connection - use IPv4 pooler instead of direct connection
-DATABASE_URL = os.environ.get('SUPABASE_URL')
+# Use DATABASE_URL (Neon PostgreSQL)
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
-    # Replace direct connection with IPv4 pooler
-    if 'db.mreriadikjexxripncpl.supabase.co:5432' in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace(
-            'db.mreriadikjexxripncpl.supabase.co:5432',
-            'aws-0-ap-southeast-1.pooler.supabase.com:6543'
-        )
-    print(f"✅ Using Supabase PostgreSQL (persistent)")
+    print(f"✅ Using Neon PostgreSQL (persistent forever)")
     USE_POSTGRES = True
     import psycopg2
     from psycopg2.extras import RealDictCursor
 else:
-    print(f"⚠️ Using SQLite (temporary)")
+    print(f"⚠️ No DATABASE_URL - using SQLite")
     USE_POSTGRES = False
     BASE_DIR = Path(__file__).parent.absolute()
     DB_PATH = str(BASE_DIR / "monitoring.db")
 
 def get_db():
     if USE_POSTGRES:
-        return psycopg2.connect(DATABASE_URL, sslmode='require')
+        return psycopg2.connect(DATABASE_URL)
     else:
         import sqlite3
         return sqlite3.connect(DB_PATH)
