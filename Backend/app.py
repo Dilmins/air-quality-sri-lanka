@@ -41,7 +41,7 @@ def get_db():
         return psycopg2.connect(DATABASE_URL)
     else:
         import sqlite3
-        return sqlite3.connect(DB_PATH)
+        return get_db()
 
 api_calls_today = 0
 api_calls_date = datetime.now().date()
@@ -461,7 +461,7 @@ def background_updater():
     while True:
         try:
             # Check if we've hit the 50 prediction limit
-            conn = sqlite3.connect(DB_PATH)
+            conn = get_db()
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM predictions")
             total_predictions = c.fetchone()[0]
@@ -541,7 +541,7 @@ def get_cities():
 @app.route('/api/stats')
 def get_stats():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         today = str(datetime.now().date())
         c.execute("SELECT COUNT(*) FROM predictions")
@@ -585,7 +585,7 @@ def get_stats():
 @app.route('/api/predictions/recent')
 def get_recent():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         two_days = (datetime.now() - timedelta(hours=48)).isoformat()
         c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
@@ -618,7 +618,7 @@ def verify():
         if pred_id is None or actual_rain not in [0, 1, 2, 3]:
             return jsonify({'error': 'Invalid data'}), 400
         
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         c.execute('SELECT predicted_rain_prob FROM predictions WHERE id = ?', (pred_id,))
         result = c.fetchone()
@@ -657,7 +657,7 @@ def update_verification():
         if pred_id is None or actual_rain not in [0, 1, 2, 3]:
             return jsonify({'error': 'Invalid data'}), 400
         
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
                   (actual_rain, datetime.now().isoformat(), pred_id))
@@ -671,7 +671,7 @@ def update_verification():
 @app.route('/api/performance')
 def get_performance():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         c.execute('SELECT predicted_rain_prob, actual_rain FROM predictions WHERE actual_rain IS NOT NULL')
         results = c.fetchall()
@@ -713,7 +713,7 @@ def get_performance():
 @app.route('/api/retrain', methods=['POST'])
 def retrain():
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db()
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
         verified = c.fetchone()[0]
