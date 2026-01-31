@@ -21,17 +21,23 @@ logger = logging.getLogger(__name__)
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
 import os
 from pathlib import Path
-import psycopg2
-from psycopg2.extras import RealDictCursor
 
-# Use Supabase PostgreSQL (persistent forever)
-DATABASE_URL = os.environ.get('SUPABASE_URL') or os.environ.get('DATABASE_URL')
+# Supabase connection - use IPv4 pooler instead of direct connection
+DATABASE_URL = os.environ.get('SUPABASE_URL')
 
 if DATABASE_URL:
-    print(f"✅ Connected to Supabase PostgreSQL (persistent)")
+    # Replace direct connection with IPv4 pooler
+    if 'db.mreriadikjexxripncpl.supabase.co:5432' in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace(
+            'db.mreriadikjexxripncpl.supabase.co:5432',
+            'aws-0-ap-southeast-1.pooler.supabase.com:6543'
+        )
+    print(f"✅ Using Supabase PostgreSQL (persistent)")
     USE_POSTGRES = True
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
 else:
-    print(f"⚠️ No database - using local SQLite")
+    print(f"⚠️ Using SQLite (temporary)")
     USE_POSTGRES = False
     BASE_DIR = Path(__file__).parent.absolute()
     DB_PATH = str(BASE_DIR / "monitoring.db")
@@ -108,38 +114,34 @@ except:
 
 def init_database():
     conn = get_db()
-    cur = conn.cursor()
+    c = conn.cursor()
     
     if USE_POSTGRES:
-        # PostgreSQL syntax
-        cur.execute('''CREATE TABLE IF NOT EXISTS predictions
+        c.execute('''CREATE TABLE IF NOT EXISTS predictions
                      (id SERIAL PRIMARY KEY, timestamp TIMESTAMP NOT NULL, city TEXT NOT NULL,
                       predicted_rain_prob REAL, outdoor_aqi REAL, temp REAL, humidity REAL, pressure REAL,
                       clouds REAL, wind_speed REAL, indoor_aqi REAL, recommendation TEXT,
                       actual_rain INTEGER DEFAULT NULL, verification_time TIMESTAMP DEFAULT NULL)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                     (id SERIAL PRIMARY KEY, date TEXT NOT NULL, call_count INTEGER NOT NULL,
-                      UNIQUE(date))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS api_usage
+                     (id SERIAL PRIMARY KEY, date TEXT NOT NULL, call_count INTEGER NOT NULL, UNIQUE(date))''')
     else:
-        # SQLite syntax
-        cur.execute('''CREATE TABLE IF NOT EXISTS predictions
+        c.execute('''CREATE TABLE IF NOT EXISTS predictions
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, city TEXT NOT NULL,
                       predicted_rain_prob REAL, outdoor_aqi REAL, temp REAL, humidity REAL, pressure REAL,
                       clouds REAL, wind_speed REAL, indoor_aqi REAL, recommendation TEXT,
                       actual_rain INTEGER DEFAULT NULL, verification_time TEXT DEFAULT NULL)''')
-        cur.execute('''CREATE TABLE IF NOT EXISTS api_usage
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, call_count INTEGER NOT NULL,
-                      UNIQUE(date))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS api_usage
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, call_count INTEGER NOT NULL, UNIQUE(date))''')
     
     conn.commit()
     conn.close()
-    print("✅ Database tables initialized")
+    print("✅ Database initialized")
 
-# Compatibility wrapper - makes sqlite3.connect work with both
+# Wrapper for sqlite3.connect calls
 if USE_POSTGRES:
     import sqlite3
-    _original_connect = sqlite3.connect
-    sqlite3.connect = lambda path: get_db()
+    _orig = sqlite3.connect
+    sqlite3.connect = lambda p: get_db()
 
 init_database()
 
