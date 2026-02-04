@@ -430,25 +430,24 @@
 
         async function loadPredictions() {
             try {
-                // Use /api/data endpoint which exists and includes prediction stats
-                const response = await fetch('/api/data');
-                const data = await response.json();
+                // Fetch stats
+                const statsResponse = await fetch('/api/data');
+                const statsData = await statsResponse.json();
                 
-                console.log('API Response:', data); // Debug log
+                console.log('Stats:', statsData);
                 
-                // Update stats from response
-                const total = data.total_predictions || 0;
-                const verified = data.verified_predictions || 0;
-                const ready = data.ready_to_verify || 0;
+                const total = statsData.total_predictions || 0;
+                const verified = statsData.verified_predictions || 0;
+                const ready = statsData.ready_to_verify || 0;
                 
                 document.getElementById('total-predictions').textContent = total;
                 document.getElementById('verified-count').textContent = verified;
                 document.getElementById('ready-count').textContent = ready;
-                document.getElementById('api-calls').textContent = data.api_calls_today || 0;
+                document.getElementById('api-calls').textContent = statsData.api_calls_today || 0;
                 
                 // Show limit notification
                 const limitNotif = document.getElementById('limit-notification');
-                if (data.limit_reached) {
+                if (statsData.limit_reached) {
                     if (ready > 0) {
                         limitNotif.innerHTML = `
                             <div class="alert alert-success" style="margin-bottom: 20px;">
@@ -456,7 +455,7 @@
                             </div>
                         `;
                     } else {
-                        const hoursLeft = data.hours_until_ready || 0;
+                        const hoursLeft = statsData.hours_until_ready || 0;
                         limitNotif.innerHTML = `
                             <div class="alert alert-info" style="margin-bottom: 20px;">
                                 <strong>Dataset Complete:</strong> ${total} predictions collected.
@@ -473,14 +472,17 @@
                     `;
                 }
                 
-                // Fetch predictions list separately
+                // Fetch predictions list
                 const predsResponse = await fetch('/api/predictions');
+                if (!predsResponse.ok) {
+                    throw new Error('Failed to fetch predictions: ' + predsResponse.status);
+                }
                 const predsData = await predsResponse.json();
                 predictions = predsData.predictions || [];
                 
-                console.log('Predictions:', predictions); // Debug log
+                console.log('Predictions count:', predictions.length);
                 
-                renderPredictions(total, ready, data.hours_until_ready || 0);
+                renderPredictions(total, ready, statsData.hours_until_ready || 0);
                 
             } catch (error) {
                 console.error('Error loading predictions:', error);
