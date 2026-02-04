@@ -10,7 +10,6 @@ import time
 import os
 import pickle
 import logging
-import sqlite3
 
 app = Flask(__name__)
 CORS(app)
@@ -19,29 +18,25 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv("OPENWEATHER_API_KEY", "892e9461d30e3702e6976bfe327d69f7")
-import os
-from pathlib import Path
 
-# Use DATABASE_URL (Neon PostgreSQL)
+# Database setup
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
-    print(f"✅ Using Neon PostgreSQL (persistent forever)")
+    print(f"✅ Using Neon PostgreSQL")
     USE_POSTGRES = True
     import psycopg2
     from psycopg2.extras import RealDictCursor
 else:
-    print(f"⚠️ No DATABASE_URL - using SQLite")
+    print(f"⚠️ Using SQLite")
     USE_POSTGRES = False
-    BASE_DIR = Path(__file__).parent.absolute()
-    DB_PATH = str(BASE_DIR / "monitoring.db")
+    import sqlite3
 
 def get_db():
     if USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
     else:
-        import sqlite3
-        return get_db()
+        return sqlite3.connect('monitoring.db')
 
 api_calls_today = 0
 api_calls_date = datetime.now().date()
@@ -104,7 +99,7 @@ try:
         rain_model = pickle.load(f)
         logger.info("Rain model loaded")
 except:
-    logger.warning("Rain model not found - run training first")
+    logger.warning("Rain model not found")
 
 def init_database():
     conn = get_db()
@@ -131,15 +126,6 @@ def init_database():
     conn.close()
     print("✅ Database initialized")
 
-# Wrapper to redirect all sqlite3.connect to get_db()
-import sqlite3
-_original_sqlite_connect = sqlite3.connect
-if USE_POSTGRES:
-    sqlite3.connect = lambda path: get_db()
-else:
-    # Define DB_PATH for SQLite mode
-    pass
-
 init_database()
 
 def can_make_api_call():
@@ -158,15 +144,20 @@ def log_prediction(data: Dict):
     try:
         conn = get_db()
         c = conn.cursor()
-        c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
-                     humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
-                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''' if USE_POSTGRES else
-                  '''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
-                     humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
-                   data['temp'], data['humidity'], data['pressure'], data['clouds'],
-                   data['wind_speed'], data['indoor_aqi'], data['recommendation']))
+        if USE_POSTGRES:
+            c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
+                         humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
+                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                      (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
+                       data['temp'], data['humidity'], data['pressure'], data['clouds'],
+                       data['wind_speed'], data['indoor_aqi'], data['recommendation']))
+        else:
+            c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
+                         humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
+                       data['temp'], data['humidity'], data['pressure'], data['clouds'],
+                       data['wind_speed'], data['indoor_aqi'], data['recommendation']))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -460,7 +451,6 @@ def background_updater():
     time.sleep(10)
     while True:
         try:
-            # Check if we've hit the 50 prediction limit
             conn = get_db()
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM predictions")
@@ -468,15 +458,11 @@ def background_updater():
             conn.close()
             
             if total_predictions >= 50:
-                # Stop making new predictions, just update display data without logging
-                logger.info(f"Prediction limit reached ({total_predictions}/50). Updating display only.")
-                
-                # Fetch data for display but don't log new predictions
+                logger.info(f"Limit reached ({total_predictions}/50). Display only.")
                 aqi_data = fetch_outdoor_aqi(system.lat, system.lon, system.api_key)
                 weather_data = fetch_weather(system.lat, system.lon, system.api_key)
                 
                 if aqi_data and weather_data:
-                    # Just update the display data without creating prediction
                     timestamp = datetime.now()
                     features = engineer_features(aqi_data, weather_data, timestamp)
                     
@@ -503,7 +489,6 @@ def background_updater():
                             'limit_reached': True, 'total_predictions': total_predictions
                         }
             else:
-                # Normal operation - collect predictions
                 data = system.update()
                 if data:
                     data['limit_reached'] = False
@@ -532,24 +517,15 @@ def monitor():
 
 @app.route('/api/data')
 def get_data():
-    return jsonify(latest_data)
-
-@app.route('/api/cities')
-def get_cities():
-    return jsonify({'cities': list(CITIES.keys()), 'current': current_city})
-
-@app.route('/api/stats')
-def get_stats():
+    # Add stats to data response
     try:
         conn = get_db()
         c = conn.cursor()
-        today = str(datetime.now().date())
         c.execute("SELECT COUNT(*) FROM predictions")
         total = c.fetchone()[0]
         c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
         verified = c.fetchone()[0]
         
-        # Check for predictions ready to verify
         if USE_POSTGRES:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
@@ -560,7 +536,43 @@ def get_stats():
                          AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
         ready = c.fetchone()[0]
         
-        # Get oldest unverified prediction time
+        conn.close()
+        
+        response = latest_data.copy()
+        response['total_predictions'] = total
+        response['verified_predictions'] = verified
+        response['ready_to_verify'] = ready
+        response['api_calls_today'] = api_calls_today
+        response['limit_reached'] = total >= 50
+        
+        return jsonify(response)
+    except:
+        return jsonify(latest_data)
+
+@app.route('/api/cities')
+def get_cities():
+    return jsonify({'cities': list(CITIES.keys()), 'current': current_city})
+
+@app.route('/api/stats')
+def get_stats():
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM predictions")
+        total = c.fetchone()[0]
+        c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
+        verified = c.fetchone()[0]
+        
+        if USE_POSTGRES:
+            c.execute('''SELECT COUNT(*) FROM predictions 
+                         WHERE actual_rain IS NULL 
+                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 12''')
+        else:
+            c.execute('''SELECT COUNT(*) FROM predictions 
+                         WHERE actual_rain IS NULL 
+                         AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
+        ready = c.fetchone()[0]
+        
         c.execute('''SELECT timestamp FROM predictions 
                      WHERE actual_rain IS NULL 
                      ORDER BY timestamp ASC LIMIT 1''')
@@ -569,63 +581,85 @@ def get_stats():
         
         hours_until_ready = 0
         if oldest_time and ready == 0:
-            oldest_dt = datetime.fromisoformat(oldest_time)
+            if isinstance(oldest_time, str):
+                oldest_dt = datetime.fromisoformat(oldest_time)
+            else:
+                oldest_dt = oldest_time
             elapsed = (datetime.now() - oldest_dt).total_seconds() / 3600
             hours_until_ready = max(0, 12 - elapsed)
         
         conn.close()
         
-        limit_reached = total >= 50
-        
         return jsonify({
             'api_calls_today': api_calls_today, 'api_limit': API_CALL_LIMIT,
             'total_predictions': total, 'verified_predictions': verified,
-            'ready_to_verify': ready, 'limit_reached': limit_reached,
+            'ready_to_verify': ready, 'limit_reached': total >= 50,
             'hours_until_ready': round(hours_until_ready, 1)
         })
     except Exception as e:
         logger.error(f"Stats error: {e}")
-        return jsonify({'error': 'Stats error'}), 500
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/api/predictions/recent')
-def get_recent():
+# NEW ENDPOINT - matches monitor.html
+@app.route('/api/predictions')
+def get_predictions():
     try:
         conn = get_db()
         c = conn.cursor()
         two_days = (datetime.now() - timedelta(hours=48)).isoformat()
-        c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
-                     clouds, recommendation, actual_rain, verification_time
-                     FROM predictions WHERE timestamp > ? ORDER BY timestamp DESC LIMIT 50''', (two_days,))
+        
+        if USE_POSTGRES:
+            c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
+                         clouds, recommendation, actual_rain, verification_time
+                         FROM predictions WHERE timestamp > %s ORDER BY timestamp DESC LIMIT 50''', (two_days,))
+        else:
+            c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
+                         clouds, recommendation, actual_rain, verification_time
+                         FROM predictions WHERE timestamp > ? ORDER BY timestamp DESC LIMIT 50''', (two_days,))
+        
         predictions = []
         for row in c.fetchall():
-            dt = datetime.fromisoformat(row[1])
+            if isinstance(row[1], str):
+                dt = datetime.fromisoformat(row[1])
+            else:
+                dt = row[1]
             hours_ago = (datetime.now() - dt).total_seconds() / 3600
             predictions.append({
-                'id': row[0], 'timestamp': row[1], 'display_time': dt.strftime('%Y-%m-%d %H:%M'),
-                'hours_ago': round(hours_ago, 1), 'city': row[2], 'rain_probability': round(row[3] * 100, 1),
-                'temp': round(row[4], 1), 'humidity': round(row[5]), 'clouds': round(row[6]),
-                'recommendation': row[7], 'actual_rain': row[8], 'verified': row[8] is not None,
+                'id': row[0], 'timestamp': row[1] if isinstance(row[1], str) else row[1].isoformat(),
+                'display_time': dt.strftime('%Y-%m-%d %H:%M'),
+                'hours_ago': round(hours_ago, 1), 'city': row[2],
+                'rain_probability': round(row[3] * 100, 1) if row[3] else 0,
+                'temp': round(row[4], 1) if row[4] else 0,
+                'humidity': round(row[5]) if row[5] else 0,
+                'clouds': round(row[6]) if row[6] else 0,
+                'recommendation': row[7], 'actual_rain': row[8],
+                'verified': row[8] is not None,
                 'ready_to_verify': hours_ago >= 12 and row[8] is None
             })
         conn.close()
         return jsonify({'predictions': predictions})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Predictions error: {e}")
+        return jsonify({'error': str(e), 'predictions': []}), 500
 
-@app.route('/api/predictions/verify', methods=['POST'])
-def verify():
+# NEW ENDPOINT - matches monitor.html
+@app.route('/api/verify-prediction', methods=['POST'])
+def verify_prediction():
     try:
         data = request.json
         pred_id = data.get('id')
         actual_rain = data.get('actual_rain')
         
-        # Accept 0=No Rain, 1=Light Rain, 2=Moderate Rain, 3=Heavy Rain
         if pred_id is None or actual_rain not in [0, 1, 2, 3]:
             return jsonify({'error': 'Invalid data'}), 400
         
         conn = get_db()
         c = conn.cursor()
-        c.execute('SELECT predicted_rain_prob FROM predictions WHERE id = ?', (pred_id,))
+        
+        if USE_POSTGRES:
+            c.execute('SELECT predicted_rain_prob FROM predictions WHERE id = %s', (pred_id,))
+        else:
+            c.execute('SELECT predicted_rain_prob FROM predictions WHERE id = ?', (pred_id,))
         result = c.fetchone()
         
         if not result:
@@ -634,26 +668,28 @@ def verify():
         
         predicted_prob = result[0]
         verification_time = datetime.now().isoformat()
-        c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
-                  (actual_rain, verification_time, pred_id))
+        
+        if USE_POSTGRES:
+            c.execute('UPDATE predictions SET actual_rain = %s, verification_time = %s WHERE id = %s',
+                      (actual_rain, verification_time, pred_id))
+        else:
+            c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
+                      (actual_rain, verification_time, pred_id))
         conn.commit()
         conn.close()
         
-        # Binary classification: 0=no rain, 1/2/3=rain occurred
         predicted_class = 1 if predicted_prob > 0.5 else 0
         actual_binary = 1 if actual_rain > 0 else 0
         correct = predicted_class == actual_binary
         
-        return jsonify({
-            'success': True, 'correct': correct, 'predicted_class': predicted_class,
-            'predicted_prob': round(predicted_prob * 100, 1), 'actual_rain': actual_rain
-        })
+        return jsonify({'success': True, 'correct': correct})
     except Exception as e:
+        logger.error(f"Verify error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/predictions/update', methods=['POST'])
+# NEW ENDPOINT - matches monitor.html
+@app.route('/api/update-verification', methods=['POST'])
 def update_verification():
-    """Allow user to change their verification"""
     try:
         data = request.json
         pred_id = data.get('id')
@@ -664,13 +700,19 @@ def update_verification():
         
         conn = get_db()
         c = conn.cursor()
-        c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
-                  (actual_rain, datetime.now().isoformat(), pred_id))
+        
+        if USE_POSTGRES:
+            c.execute('UPDATE predictions SET actual_rain = %s, verification_time = %s WHERE id = %s',
+                      (actual_rain, datetime.now().isoformat(), pred_id))
+        else:
+            c.execute('UPDATE predictions SET actual_rain = ?, verification_time = ? WHERE id = ?',
+                      (actual_rain, datetime.now().isoformat(), pred_id))
         conn.commit()
         conn.close()
         
         return jsonify({'success': True, 'message': 'Updated successfully'})
     except Exception as e:
+        logger.error(f"Update error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/performance')
@@ -683,14 +725,15 @@ def get_performance():
         
         if len(results) < 5:
             conn.close()
-            return jsonify({'insufficient_data': True, 'verified_count': len(results), 'minimum_required': 5})
+            return jsonify({'insufficient_data': True, 'verified_count': len(results)})
         
         tp = fp = tn = fn = 0
         for pred_prob, actual in results:
             predicted = 1 if pred_prob > 0.5 else 0
-            if predicted == 1 and actual == 1: tp += 1
-            elif predicted == 1 and actual == 0: fp += 1
-            elif predicted == 0 and actual == 0: tn += 1
+            actual_bin = 1 if actual > 0 else 0
+            if predicted == 1 and actual_bin == 1: tp += 1
+            elif predicted == 1 and actual_bin == 0: fp += 1
+            elif predicted == 0 and actual_bin == 0: tn += 1
             else: fn += 1
         
         total = len(results)
@@ -699,20 +742,15 @@ def get_performance():
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         
-        week_ago = str((datetime.now() - timedelta(days=7)).date())
-        c.execute("SELECT date, call_count FROM api_usage WHERE date >= ? ORDER BY date DESC", (week_ago,))
-        api_usage = [{'date': row[0], 'calls': row[1]} for row in c.fetchall()]
-        
         conn.close()
         
         return jsonify({
             'verified_count': total, 'accuracy': round(accuracy * 100, 1),
             'precision': round(precision * 100, 1), 'recall': round(recall * 100, 1),
-            'f1_score': round(f1 * 100, 1),
-            'confusion_matrix': {'true_positives': tp, 'false_positives': fp, 'true_negatives': tn, 'false_negatives': fn},
-            'api_usage': api_usage, 'ready_for_retrain': total >= 50
+            'f1_score': round(f1 * 100, 1)
         })
     except Exception as e:
+        logger.error(f"Performance error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/retrain', methods=['POST'])
@@ -725,15 +763,14 @@ def retrain():
         
         if verified < 50:
             conn.close()
-            return jsonify({'error': f'Need 50 verified. Currently have {verified}'}), 400
+            return jsonify({'error': f'Need 50 verified. Have {verified}'}), 400
         
-        # Archive and delete verified predictions to reset counter
-        logger.info(f"Retraining with {verified} verified predictions")
+        logger.info(f"Retraining with {verified} verified")
         c.execute("DELETE FROM predictions")
         conn.commit()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Model retrained. Counter reset to 0.'})
+        return jsonify({'success': True, 'message': 'Retrained. Counter reset.'})
     except Exception as e:
         logger.error(f"Retrain error: {e}")
         return jsonify({'error': str(e)}), 500
