@@ -529,11 +529,11 @@ def get_data():
         if USE_POSTGRES:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 0.2''')
+                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 12''')
         else:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND (julianday('now') - julianday(timestamp)) * 24 >= 0.2''')
+                         AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
         ready = c.fetchone()[0]
         
         conn.close()
@@ -566,11 +566,11 @@ def get_stats():
         if USE_POSTGRES:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 0.2''')
+                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 12''')
         else:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND (julianday('now') - julianday(timestamp)) * 24 >= 0.2''')
+                         AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
         ready = c.fetchone()[0]
         
         c.execute('''SELECT timestamp FROM predictions 
@@ -586,7 +586,7 @@ def get_stats():
             else:
                 oldest_dt = oldest_time
             elapsed = (datetime.now() - oldest_dt).total_seconds() / 3600
-            hours_until_ready = max(0, 0.2 - elapsed)
+            hours_until_ready = max(0, 12 - elapsed)
         
         conn.close()
         
@@ -606,16 +606,16 @@ def get_predictions():
     try:
         conn = get_db()
         c = conn.cursor()
-        two_days = (datetime.now() - timedelta(hours=48)).isoformat()
         
+        # Get last 50 predictions regardless of time
         if USE_POSTGRES:
             c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
                          clouds, recommendation, actual_rain, verification_time
-                         FROM predictions WHERE timestamp > %s ORDER BY timestamp DESC LIMIT 50''', (two_days,))
+                         FROM predictions ORDER BY timestamp DESC LIMIT 50''')
         else:
             c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
                          clouds, recommendation, actual_rain, verification_time
-                         FROM predictions WHERE timestamp > ? ORDER BY timestamp DESC LIMIT 50''', (two_days,))
+                         FROM predictions ORDER BY timestamp DESC LIMIT 50''')
         
         predictions = []
         for row in c.fetchall():
@@ -634,7 +634,7 @@ def get_predictions():
                 'clouds': round(row[6]) if row[6] else 0,
                 'recommendation': row[7], 'actual_rain': row[8],
                 'verified': row[8] is not None,
-                'ready_to_verify': hours_ago >= 0.2 and row[8] is None
+                'ready_to_verify': hours_ago >= 12 and row[8] is None
             })
         conn.close()
         return jsonify({'predictions': predictions})

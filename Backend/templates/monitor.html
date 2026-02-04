@@ -369,7 +369,6 @@
     <div class="container">
         <div class="tabs">
             <button class="tab active" onclick="switchTab('verify')">Verify Predictions</button>
-            <button class="tab" onclick="switchTab('performance')">Performance</button>
             <button class="tab" onclick="switchTab('retrain')">Retrain Model</button>
         </div>
 
@@ -394,18 +393,12 @@
                 </div>
             </div>
 
-            <div id="alert-container"></div>
             <div id="limit-notification"></div>
 
             <div class="card">
                 <h2 class="card-title">Recent Predictions</h2>
                 <div id="predictions-list" class="loading">Loading predictions...</div>
             </div>
-        </div>
-
-        <!-- Performance Tab -->
-        <div id="performance-tab" class="tab-content">
-            <div id="performance-content" class="loading">Loading performance data...</div>
         </div>
 
         <!-- Retrain Tab -->
@@ -424,7 +417,6 @@
             document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
             document.getElementById(`${tab}-tab`).classList.add('active');
             
-            if (tab === 'performance') loadPerformance();
             if (tab === 'retrain') loadRetrainStatus();
         }
 
@@ -509,7 +501,7 @@
             if (readyCount === 0 && total >= 50) {
                 container.innerHTML = `
                     <div class="alert alert-info" style="margin-bottom: 20px;">
-                        <strong>Verification Window:</strong> Predictions must age for 12 minutes to ensure accurate verification.
+                        <strong>Verification Window:</strong> Predictions must age for 12 hours to ensure accurate verification.
                         <br><br>
                         <strong>Time remaining:</strong> ${hoursUntilReady.toFixed(1)} hours
                     </div>
@@ -520,7 +512,7 @@
             } else if (readyCount === 0) {
                 container.innerHTML = `
                     <div class="alert alert-info" style="margin-bottom: 20px;">
-                        <strong>Collection Phase:</strong> Predictions require a 12-minute period before verification. Continue collecting data.
+                        <strong>Collection Phase:</strong> Predictions require a 12-hour period before verification. Continue collecting data.
                     </div>
                     <div class="prediction-list">` +
                     predictions.map(p => renderPrediction(p)).join('') +
@@ -539,7 +531,7 @@
                 '<span class="badge badge-verified">✓ Verified</span>' :
                 p.ready_to_verify ?
                 '<span class="badge badge-ready">Ready to Verify</span>' :
-                '<span class="badge badge-pending">Pending (wait 12 min)</span>';
+                '<span class="badge badge-pending">Pending (wait 12h)</span>';
             
             return `
                 <div class="prediction-item ${statusClass}">
@@ -597,13 +589,21 @@
         }
 
         async function verifyPrediction(id, actualRain) {
-            const alertContainer = document.getElementById('alert-container');
-            alertContainer.innerHTML = `
+            const predictionCard = event.target.closest('.prediction-item');
+            let alertDiv = predictionCard.querySelector('.prediction-alert');
+            
+            if (!alertDiv) {
+                alertDiv = document.createElement('div');
+                alertDiv.className = 'prediction-alert';
+                predictionCard.insertBefore(alertDiv, predictionCard.querySelector('.verify-actions'));
+            }
+            
+            alertDiv.innerHTML = `
                 <div class="alert alert-info">
                     <strong>Confirm:</strong> ${getRainLabel(actualRain)}
                     <div style="margin-top: 12px; display: flex; gap: 12px;">
                         <button class="btn btn-success" onclick="confirmVerification(${id}, ${actualRain})">Confirm</button>
-                        <button class="btn" style="background: var(--gray); color: white;" onclick="document.getElementById('alert-container').innerHTML = '';">Cancel</button>
+                        <button class="btn" style="background: var(--gray); color: white;" onclick="this.closest('.prediction-alert').remove()">Cancel</button>
                     </div>
                 </div>
             `;
@@ -639,8 +639,17 @@
         }
 
         async function editVerification(id, currentRain) {
-            const alertContainer = document.getElementById('alert-container');
-            alertContainer.innerHTML = `
+            const predictionCard = event.target.closest('.prediction-item');
+            let alertDiv = predictionCard.querySelector('.prediction-alert');
+            
+            if (!alertDiv) {
+                alertDiv = document.createElement('div');
+                alertDiv.className = 'prediction-alert';
+                const verifiedDiv = predictionCard.querySelector('.alert-success');
+                predictionCard.insertBefore(alertDiv, verifiedDiv);
+            }
+            
+            alertDiv.innerHTML = `
                 <div class="alert alert-info">
                     <strong>Change verification:</strong>
                     <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
@@ -681,51 +690,6 @@
         function getRainLabel(value) {
             const labels = ['No Rain', 'Light Rain (drizzle)', 'Moderate Rain', 'Heavy Rain'];
             return labels[value] || 'Unknown';
-        }
-
-        async function loadPerformance() {
-            try {
-                const response = await fetch('/api/performance');
-                const data = await response.json();
-                
-                const container = document.getElementById('performance-content');
-                
-                if (data.insufficient_data) {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <div style="font-size: 48px; margin-bottom: 16px;">📈</div>
-                            <h3>Not Enough Data Yet</h3>
-                            <p>Need at least 5 verified predictions. Currently have ${data.verified_count || 0}.</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                container.innerHTML = `
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-label">Accuracy</div>
-                            <div class="stat-value ${data.accuracy >= 85 ? 'good' : 'warning'}">${data.accuracy}%</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Precision</div>
-                            <div class="stat-value">${data.precision}%</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">Recall</div>
-                            <div class="stat-value">${data.recall}%</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-label">F1 Score</div>
-                            <div class="stat-value">${data.f1_score}%</div>
-                        </div>
-                    </div>
-                `;
-            } catch (error) {
-                console.error('Error loading performance:', error);
-                document.getElementById('performance-content').innerHTML = 
-                    '<div class="alert alert-danger">Error loading performance data</div>';
-            }
         }
 
         async function loadRetrainStatus() {
