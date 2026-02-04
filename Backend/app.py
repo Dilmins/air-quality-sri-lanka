@@ -529,11 +529,11 @@ def get_data():
         if USE_POSTGRES:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 12''')
+                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 0.2''')
         else:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
+                         AND (julianday('now') - julianday(timestamp)) * 24 >= 0.2''')
         ready = c.fetchone()[0]
         
         conn.close()
@@ -566,11 +566,11 @@ def get_stats():
         if USE_POSTGRES:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 12''')
+                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 0.2''')
         else:
             c.execute('''SELECT COUNT(*) FROM predictions 
                          WHERE actual_rain IS NULL 
-                         AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
+                         AND (julianday('now') - julianday(timestamp)) * 24 >= 0.2''')
         ready = c.fetchone()[0]
         
         c.execute('''SELECT timestamp FROM predictions 
@@ -586,7 +586,7 @@ def get_stats():
             else:
                 oldest_dt = oldest_time
             elapsed = (datetime.now() - oldest_dt).total_seconds() / 3600
-            hours_until_ready = max(0, 12 - elapsed)
+            hours_until_ready = max(0, 0.2 - elapsed)
         
         conn.close()
         
@@ -634,7 +634,7 @@ def get_predictions():
                 'clouds': round(row[6]) if row[6] else 0,
                 'recommendation': row[7], 'actual_rain': row[8],
                 'verified': row[8] is not None,
-                'ready_to_verify': hours_ago >= 12 and row[8] is None
+                'ready_to_verify': hours_ago >= 0.2 and row[8] is None
             })
         conn.close()
         return jsonify({'predictions': predictions})

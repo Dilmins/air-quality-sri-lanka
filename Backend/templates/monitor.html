@@ -509,7 +509,7 @@
             if (readyCount === 0 && total >= 50) {
                 container.innerHTML = `
                     <div class="alert alert-info" style="margin-bottom: 20px;">
-                        <strong>Verification Window:</strong> Predictions must age for 12 hours to ensure accurate verification.
+                        <strong>Verification Window:</strong> Predictions must age for 12 minutes to ensure accurate verification.
                         <br><br>
                         <strong>Time remaining:</strong> ${hoursUntilReady.toFixed(1)} hours
                     </div>
@@ -520,7 +520,7 @@
             } else if (readyCount === 0) {
                 container.innerHTML = `
                     <div class="alert alert-info" style="margin-bottom: 20px;">
-                        <strong>Collection Phase:</strong> Predictions require a 12-hour period before verification. Continue collecting data.
+                        <strong>Collection Phase:</strong> Predictions require a 12-minute period before verification. Continue collecting data.
                     </div>
                     <div class="prediction-list">` +
                     predictions.map(p => renderPrediction(p)).join('') +
@@ -539,7 +539,7 @@
                 '<span class="badge badge-verified">✓ Verified</span>' :
                 p.ready_to_verify ?
                 '<span class="badge badge-ready">Ready to Verify</span>' :
-                '<span class="badge badge-pending">Pending (wait 12h)</span>';
+                '<span class="badge badge-pending">Pending (wait 12 min)</span>';
             
             return `
                 <div class="prediction-item ${statusClass}">
