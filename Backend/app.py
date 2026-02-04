@@ -48,43 +48,43 @@ api_calls_date = datetime.now().date()
 API_CALL_LIMIT = 950
 
 CITIES = {
-        "Colombo": {"lat": 6.9271, "lon": 79.8612},
-        "Kandy": {"lat": 7.2906, "lon": 80.6337},
-        "Galle": {"lat": 6.0535, "lon": 80.2210},
-        "Jaffna": {"lat": 9.6615, "lon": 80.0255},
-        "Negombo": {"lat": 7.2008, "lon": 79.8358},
-        "Trincomalee": {"lat": 8.5874, "lon": 81.2152},
-        "Batticaloa": {"lat": 7.7310, "lon": 81.6747},
-        "Matara": {"lat": 5.9549, "lon": 80.5550},
-        "Anuradhapura": {"lat": 8.3114, "lon": 80.4037},
-        "Kurunegala": {"lat": 7.4863, "lon": 80.3623},
-        "Ratnapura": {"lat": 6.6828, "lon": 80.3992},
-        "Badulla": {"lat": 6.9934, "lon": 81.0550},
-        "Nuwara Eliya": {"lat": 6.9497, "lon": 80.7891},
-        "Matale": {"lat": 7.4675, "lon": 80.6234},
-        "Gampaha": {"lat": 7.0914, "lon": 79.9990},
-        "Nalluruwa": {"lat": 6.7000, "lon": 79.9167},
-        "Mirigama": {"lat": 7.2382, "lon": 80.1262},
-        "Panadura": {"lat": 6.7133, "lon": 79.9026},
-        "Rajagiriya": {"lat": 6.9089, "lon": 79.8911},
-        "Tokyo": {"lat": 35.6762, "lon": 139.6503},
-        "Osaka": {"lat": 34.6937, "lon": 135.5023},
-        "Hiroshima": {"lat": 34.3853, "lon": 132.4553},
-        "Dubai": {"lat": 25.2048, "lon": 55.2708},
-        "Uganda": {"lat": 1.3733, "lon": 32.2903},
-        "Guyana": {"lat": 4.8604, "lon": -58.9302},
-        "Malaysia": {"lat": 4.2105, "lon": 101.9758},
-        "Thailand": {"lat": 15.8700, "lon": 100.9925},
-        "Bambarabatuoya MHPP": {"lat": 6.7014, "lon": 80.5097},
-        "Batathota MHPP": {"lat": 6.8126, "lon": 80.3757},
-        "Wembiyagoda MHPP": {"lat": 6.5176, "lon": 80.4132},
-        "Lower Kotmale Oya MHPP": {"lat": 7.0332, "lon": 80.6508},
-        "Rideepana MHPP": {"lat": 7.0093, "lon": 81.0640},
-        "Udawela MHPP": {"lat": 7.0564, "lon": 81.0608},
-        "Madugeta MHPP": {"lat": 6.3706, "lon": 80.4088},
-        "Ethamala Ella MHPP": {"lat": 6.2269, "lon": 80.4979},
-        "Muvumbe SHPP": {"lat": -1.3186, "lon": 30.0789},
-        "Bukinda SHPP": {"lat": -1.1858, "lon": 30.1206}
+    "Colombo": {"lat": 6.9271, "lon": 79.8612},
+    "Kandy": {"lat": 7.2906, "lon": 80.6337},
+    "Galle": {"lat": 6.0535, "lon": 80.2210},
+    "Jaffna": {"lat": 9.6615, "lon": 80.0255},
+    "Negombo": {"lat": 7.2008, "lon": 79.8358},
+    "Trincomalee": {"lat": 8.5874, "lon": 81.2152},
+    "Batticaloa": {"lat": 7.7310, "lon": 81.6747},
+    "Matara": {"lat": 5.9549, "lon": 80.5550},
+    "Anuradhapura": {"lat": 8.3114, "lon": 80.4037},
+    "Kurunegala": {"lat": 7.4863, "lon": 80.3623},
+    "Ratnapura": {"lat": 6.6828, "lon": 80.3992},
+    "Badulla": {"lat": 6.9934, "lon": 81.0550},
+    "Nuwara Eliya": {"lat": 6.9497, "lon": 80.7891},
+    "Matale": {"lat": 7.4675, "lon": 80.6234},
+    "Gampaha": {"lat": 7.0914, "lon": 79.9990},
+    "Nalluruwa": {"lat": 6.7000, "lon": 79.9167},
+    "Mirigama": {"lat": 7.2382, "lon": 80.1262},
+    "Panadura": {"lat": 6.7133, "lon": 79.9026},
+    "Rajagiriya": {"lat": 6.9089, "lon": 79.8911},
+    "Tokyo": {"lat": 35.6762, "lon": 139.6503},
+    "Osaka": {"lat": 34.6937, "lon": 135.5023},
+    "Hiroshima": {"lat": 34.3853, "lon": 132.4553},
+    "Dubai": {"lat": 25.2048, "lon": 55.2708},
+    "Uganda": {"lat": 1.3733, "lon": 32.2903},
+    "Guyana": {"lat": 4.8604, "lon": -58.9302},
+    "Malaysia": {"lat": 4.2105, "lon": 101.9758},
+    "Thailand": {"lat": 15.8700, "lon": 100.9925},
+    "Bambarabatuoya MHPP": {"lat": 6.7014, "lon": 80.5097},
+    "Batathota MHPP": {"lat": 6.8126, "lon": 80.3757},
+    "Wembiyagoda MHPP": {"lat": 6.5176, "lon": 80.4132},
+    "Lower Kotmale Oya MHPP": {"lat": 7.0332, "lon": 80.6508},
+    "Rideepana MHPP": {"lat": 7.0093, "lon": 81.0640},
+    "Udawela MHPP": {"lat": 7.0564, "lon": 81.0608},
+    "Madugeta MHPP": {"lat": 6.3706, "lon": 80.4088},
+    "Ethamala Ella MHPP": {"lat": 6.2269, "lon": 80.4979},
+    "Muvumbe SHPP": {"lat": -1.3186, "lon": 30.0789},
+    "Bukinda SHPP": {"lat": -1.1858, "lon": 30.1206}
 }
 
 current_city = "Colombo"
@@ -550,9 +550,14 @@ def get_stats():
         verified = c.fetchone()[0]
         
         # Check for predictions ready to verify
-        c.execute('''SELECT COUNT(*) FROM predictions 
-                     WHERE actual_rain IS NULL 
-                     AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
+        if USE_POSTGRES:
+            c.execute('''SELECT COUNT(*) FROM predictions 
+                         WHERE actual_rain IS NULL 
+                         AND EXTRACT(EPOCH FROM (NOW() - timestamp))/3600 >= 12''')
+        else:
+            c.execute('''SELECT COUNT(*) FROM predictions 
+                         WHERE actual_rain IS NULL 
+                         AND (julianday('now') - julianday(timestamp)) * 24 >= 12''')
         ready = c.fetchone()[0]
         
         # Get oldest unverified prediction time
