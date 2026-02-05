@@ -4,7 +4,7 @@ import numpy as np
 import requests
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple
-from sklearn.ensemble import RandomForestRegressor, IsolationForest
+from sklearn.ensemble import RandomForestRegressor, IsolationForest, GradientBoostingRegressor
 import threading
 import time
 import os
@@ -110,17 +110,37 @@ def init_database():
                      (id SERIAL PRIMARY KEY, timestamp TIMESTAMP NOT NULL, city TEXT NOT NULL,
                       predicted_rain_prob REAL, outdoor_aqi REAL, temp REAL, humidity REAL, pressure REAL,
                       clouds REAL, wind_speed REAL, indoor_aqi REAL, recommendation TEXT,
-                      actual_rain INTEGER DEFAULT NULL, verification_time TIMESTAMP DEFAULT NULL)''')
+                      actual_rain INTEGER DEFAULT NULL, verification_time TIMESTAMP DEFAULT NULL,
+                      used_in_training BOOLEAN DEFAULT FALSE)''')
         c.execute('''CREATE TABLE IF NOT EXISTS api_usage
                      (id SERIAL PRIMARY KEY, date TEXT NOT NULL, call_count INTEGER NOT NULL, UNIQUE(date))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS training_history
+                     (id SERIAL PRIMARY KEY, trained_at TIMESTAMP, samples_count INTEGER, 
+                      model_version INTEGER, accuracy REAL)''')
     else:
         c.execute('''CREATE TABLE IF NOT EXISTS predictions
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, city TEXT NOT NULL,
                       predicted_rain_prob REAL, outdoor_aqi REAL, temp REAL, humidity REAL, pressure REAL,
                       clouds REAL, wind_speed REAL, indoor_aqi REAL, recommendation TEXT,
-                      actual_rain INTEGER DEFAULT NULL, verification_time TEXT DEFAULT NULL)''')
+                      actual_rain INTEGER DEFAULT NULL, verification_time TEXT DEFAULT NULL,
+                      used_in_training INTEGER DEFAULT 0)''')
         c.execute('''CREATE TABLE IF NOT EXISTS api_usage
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, call_count INTEGER NOT NULL, UNIQUE(date))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS training_history
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, trained_at TEXT, samples_count INTEGER, 
+                      model_version INTEGER, accuracy REAL)''')
+    
+    # Migration: Add used_in_training column if it doesn't exist
+    try:
+        if USE_POSTGRES:
+            c.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS used_in_training BOOLEAN DEFAULT FALSE")
+        else:
+            c.execute("PRAGMA table_info(predictions)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'used_in_training' not in columns:
+                c.execute("ALTER TABLE predictions ADD COLUMN used_in_training INTEGER DEFAULT 0")
+    except Exception as e:
+        logger.warning(f"Migration warning: {e}")
     
     conn.commit()
     conn.close()
@@ -289,23 +309,52 @@ def engineer_features(aqi_data, weather_data, timestamp):
 
 class IAQRegressor:
     def __init__(self):
-        self.model = RandomForestRegressor(n_estimators=30, max_depth=8, min_samples_split=15,
-                                          min_samples_leaf=8, max_features='sqrt', n_jobs=1, random_state=42)
+        # Ensemble: RandomForest + GradientBoosting for better accuracy
+        self.rf_model = RandomForestRegressor(n_estimators=50, max_depth=10, 
+                                             min_samples_split=10, random_state=42)
+        self.gb_model = GradientBoostingRegressor(n_estimators=30, max_depth=6, 
+                                                  learning_rate=0.1, random_state=42)
         self.is_trained = False
     
     def train(self, X, y):
-        self.model.fit(X, y)
+        self.rf_model.fit(X, y)
+        self.gb_model.fit(X, y)
         self.is_trained = True
     
     def predict(self, X):
-        if not self.is_trained:
-            outdoor_aqi = X[0]
-            wind_speed = X[8]
-            infiltration = min(0.7, 0.3 + 0.05 * wind_speed)
-            return float(max(1.0, min(500.0, outdoor_aqi * infiltration + 5.0)))
         if X.ndim == 1:
             X = X.reshape(1, -1)
-        return float(max(1.0, min(500.0, self.model.predict(X)[0])))
+        
+        # Physics-based baseline
+        outdoor_aqi = X[0, 0]
+        wind_speed = X[0, 8]
+        humidity = X[0, 7]
+        temp = X[0, 6]
+        
+        # Infiltration rate (ACH - Air Changes per Hour)
+        base_infiltration = 0.35  # Typical residential
+        wind_factor = min(0.5, 0.05 * wind_speed)
+        temp_diff_factor = 0.02 * abs(temp - 25)  # Stack effect
+        infiltration = base_infiltration + wind_factor + temp_diff_factor
+        
+        # Deposition & filtration
+        particle_loss = 0.15  # Natural deposition
+        
+        # Physics model
+        physics_pred = outdoor_aqi * (infiltration - particle_loss) + 5.0
+        
+        if not self.is_trained:
+            return float(max(1.0, min(500.0, physics_pred)))
+        
+        # ML ensemble prediction (60% RF, 40% GB)
+        rf_pred = self.rf_model.predict(X)[0]
+        gb_pred = self.gb_model.predict(X)[0]
+        ml_pred = 0.6 * rf_pred + 0.4 * gb_pred
+        
+        # Hybrid: 70% ML, 30% physics (ML learns corrections to physics)
+        final_pred = 0.7 * ml_pred + 0.3 * physics_pred
+        
+        return float(max(1.0, min(500.0, final_pred)))
 
 class IAQAnomalyDetector:
     def __init__(self):
@@ -375,15 +424,24 @@ class IAQSystem:
         self._initialize_models()
         
     def _initialize_models(self):
-        n = 500
+        n = 800  # More training data
         X, y = [], []
         for _ in range(n):
-            oa = np.random.uniform(10, 150)
-            ws = np.random.uniform(0, 10)
+            oa = np.random.uniform(5, 200)  # outdoor AQI
+            ws = np.random.uniform(0, 12)   # wind speed
+            hum = np.random.uniform(30, 95)
+            temp = np.random.uniform(15, 40)
+            
+            # Simulate realistic indoor/outdoor relationship
+            infiltration = 0.35 + 0.05 * ws + 0.02 * abs(temp - 25)
+            particle_loss = 0.15
+            indoor = oa * (infiltration - particle_loss) + np.random.uniform(-5, 10)
+            
             f = np.random.rand(20)
-            f[0], f[8] = oa, ws
+            f[0], f[6], f[7], f[8] = oa, temp, hum, ws
             X.append(f)
-            y.append(oa * min(0.7, 0.3 + 0.05 * ws) + np.random.uniform(0, 10))
+            y.append(max(1, min(500, indoor)))
+            
         X = np.array(X, dtype=np.float32)
         y = np.array(y, dtype=np.float32)
         self.regressor.train(X, y)
@@ -523,7 +581,10 @@ def get_data():
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM predictions")
         total = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
+        if USE_POSTGRES:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL AND used_in_training = FALSE")
+        else:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL AND used_in_training = 0")
         verified = c.fetchone()[0]
         
         if USE_POSTGRES:
@@ -560,7 +621,10 @@ def get_stats():
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM predictions")
         total = c.fetchone()[0]
-        c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
+        if USE_POSTGRES:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL AND used_in_training = FALSE")
+        else:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL AND used_in_training = 0")
         verified = c.fetchone()[0]
         
         if USE_POSTGRES:
@@ -758,19 +822,98 @@ def retrain():
     try:
         conn = get_db()
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL")
+        
+        # Count verified but not yet trained data
+        if USE_POSTGRES:
+            c.execute("""SELECT COUNT(*) FROM predictions 
+                        WHERE actual_rain IS NOT NULL AND used_in_training = FALSE""")
+        else:
+            c.execute("""SELECT COUNT(*) FROM predictions 
+                        WHERE actual_rain IS NOT NULL AND used_in_training = 0""")
         verified = c.fetchone()[0]
         
         if verified < 50:
             conn.close()
-            return jsonify({'error': f'Need 50 verified. Have {verified}'}), 400
+            return jsonify({'error': f'Need 50 new verified samples. Have {verified}'}), 400
         
-        logger.info(f"Retraining with {verified} verified")
-        c.execute("DELETE FROM predictions")
+        # Get untrainedverified data
+        if USE_POSTGRES:
+            c.execute('''SELECT predicted_rain_prob, temp, humidity, pressure, clouds, 
+                         wind_speed, actual_rain FROM predictions 
+                         WHERE actual_rain IS NOT NULL AND used_in_training = FALSE''')
+        else:
+            c.execute('''SELECT predicted_rain_prob, temp, humidity, pressure, clouds, 
+                         wind_speed, actual_rain FROM predictions 
+                         WHERE actual_rain IS NOT NULL AND used_in_training = 0''')
+        verified_data = c.fetchall()
+        
+        # Prepare training data
+        X_new = []
+        y_new = []
+        for row in verified_data:
+            X_new.append([row[0], row[1], row[2], row[3], row[4], row[5]])
+            y_new.append(1 if row[6] > 0 else 0)
+        
+        X_new = np.array(X_new)
+        y_new = np.array(y_new)
+        
+        # Calculate accuracy before training
+        old_accuracy = 0
+        if len(y_new) > 0:
+            tp = fp = tn = fn = 0
+            for i, row in enumerate(verified_data):
+                pred = 1 if row[0] > 0.5 else 0
+                actual = 1 if row[6] > 0 else 0
+                if pred == 1 and actual == 1: tp += 1
+                elif pred == 1 and actual == 0: fp += 1
+                elif pred == 0 and actual == 0: tn += 1
+                else: fn += 1
+            old_accuracy = (tp + tn) / len(y_new) if len(y_new) > 0 else 0
+        
+        # Retrain rain model
+        global rain_model
+        if rain_model is not None:
+            try:
+                rain_model.n_estimators += 20
+                rain_model.fit(X_new, y_new)
+                
+                import pickle
+                with open('rain_model.pkl', 'wb') as f:
+                    pickle.dump(rain_model, f)
+                
+                logger.info(f"✅ Rain model retrained with {len(y_new)} samples")
+            except Exception as e:
+                logger.warning(f"Rain model retrain failed: {e}")
+        
+        # Mark data as used in training (KEEP THE DATA)
+        if USE_POSTGRES:
+            c.execute("""UPDATE predictions SET used_in_training = TRUE 
+                        WHERE actual_rain IS NOT NULL AND used_in_training = FALSE""")
+        else:
+            c.execute("""UPDATE predictions SET used_in_training = 1 
+                        WHERE actual_rain IS NOT NULL AND used_in_training = 0""")
+        
+        # Log training history
+        if USE_POSTGRES:
+            c.execute("""INSERT INTO training_history (trained_at, samples_count, model_version, accuracy)
+                        VALUES (NOW(), %s, 
+                               (SELECT COALESCE(MAX(model_version), 0) + 1 FROM training_history), %s)""",
+                     (verified, old_accuracy))
+        else:
+            c.execute("""INSERT INTO training_history (trained_at, samples_count, model_version, accuracy)
+                        VALUES (datetime('now'), ?, 
+                               (SELECT COALESCE(MAX(model_version), 0) + 1 FROM training_history), ?)""",
+                     (verified, old_accuracy))
+        
         conn.commit()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Retrained. Counter reset.'})
+        return jsonify({
+            'success': True, 
+            'message': f'Model retrained with {verified} samples. Data preserved.',
+            'samples_trained': verified,
+            'pre_training_accuracy': round(old_accuracy * 100, 1)
+        })
     except Exception as e:
         logger.error(f"Retrain error: {e}")
         return jsonify({'error': str(e)}), 500
