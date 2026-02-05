@@ -526,6 +526,17 @@
         }
 
         function renderPrediction(p) {
+            // Convert UTC timestamp to local time
+            const utcDate = new Date(p.timestamp);
+            const localTime = utcDate.toLocaleString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            });
+            
             const statusClass = p.verified ? 'verified' : (p.ready_to_verify ? 'ready' : '');
             const badge = p.verified ? 
                 '<span class="badge badge-verified">✓ Verified</span>' :
@@ -536,7 +547,7 @@
             return `
                 <div class="prediction-item ${statusClass}">
                     <div class="prediction-header">
-                        <span class="prediction-time">${p.display_time || new Date(p.timestamp).toLocaleString()} (${p.hours_ago || 0}h ago)</span>
+                        <span class="prediction-time">${localTime} (${p.hours_ago}h ago)</span>
                         ${badge}
                     </div>
                     <div class="prediction-details">

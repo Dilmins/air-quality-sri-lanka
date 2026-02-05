@@ -690,7 +690,7 @@ def get_predictions():
             hours_ago = (datetime.now() - dt).total_seconds() / 3600
             predictions.append({
                 'id': row[0], 'timestamp': row[1] if isinstance(row[1], str) else row[1].isoformat(),
-                'display_time': dt.strftime('%Y-%m-%d %H:%M'),
+                'display_time': dt.strftime('%Y-%m-%d %H:%M') + ' UTC',
                 'hours_ago': round(hours_ago, 1), 'city': row[2],
                 'rain_probability': round(row[3] * 100, 1) if row[3] else 0,
                 'temp': round(row[4], 1) if row[4] else 0,
