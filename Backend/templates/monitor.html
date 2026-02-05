@@ -564,22 +564,22 @@
                     ${p.verified ? `
                         <div class="alert alert-success" style="margin-top: 12px;">
                             Verified: ${getRainLabel(p.actual_rain)}
-                            <button class="btn" style="background: var(--gray); color: white; padding: 4px 12px; font-size: 12px; margin-left: 12px;" onclick="editVerification(${p.id}, ${p.actual_rain})">
+                            <button class="btn" style="background: var(--gray); color: white; padding: 4px 12px; font-size: 12px; margin-left: 12px;" onclick="editVerification(event, ${p.id}, ${p.actual_rain})">>
                                 Edit
                             </button>
                         </div>
                     ` : p.ready_to_verify ? `
                         <div class="verify-actions">
-                            <button class="btn" style="background: #10B981; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 0)">
+                            <button class="btn" style="background: #10B981; color: white; flex: 1;" onclick="verifyPrediction(event, ${p.id}, 0)">
                                 No Rain
                             </button>
-                            <button class="btn" style="background: #3B82F6; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 1)">
+                            <button class="btn" style="background: #3B82F6; color: white; flex: 1;" onclick="verifyPrediction(event, ${p.id}, 1)">
                                 Light Rain
                             </button>
-                            <button class="btn" style="background: #F59E0B; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 2)">
+                            <button class="btn" style="background: #F59E0B; color: white; flex: 1;" onclick="verifyPrediction(event, ${p.id}, 2)">
                                 Moderate
                             </button>
-                            <button class="btn" style="background: #EF4444; color: white; flex: 1;" onclick="verifyPrediction(${p.id}, 3)">
+                            <button class="btn" style="background: #EF4444; color: white; flex: 1;" onclick="verifyPrediction(event, ${p.id}, 3)">
                                 Heavy Rain
                             </button>
                         </div>
@@ -588,7 +588,7 @@
             `;
         }
 
-        async function verifyPrediction(id, actualRain) {
+        async function verifyPrediction(event, id, actualRain) {
             const predictionCard = event.target.closest('.prediction-item');
             let alertDiv = predictionCard.querySelector('.prediction-alert');
             
@@ -638,7 +638,7 @@
             }
         }
 
-        async function editVerification(id, currentRain) {
+        async function editVerification(event, id, currentRain) {
             const predictionCard = event.target.closest('.prediction-item');
             let alertDiv = predictionCard.querySelector('.prediction-alert');
             

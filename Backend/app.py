@@ -836,22 +836,37 @@ def retrain():
             conn.close()
             return jsonify({'error': f'Need 50 new verified samples. Have {verified}'}), 400
         
-        # Get untrainedverified data
+        # Get verified data with all needed features
         if USE_POSTGRES:
-            c.execute('''SELECT predicted_rain_prob, temp, humidity, pressure, clouds, 
-                         wind_speed, actual_rain FROM predictions 
+            c.execute('''SELECT temp, humidity, pressure, wind_speed, clouds, 
+                         predicted_rain_prob, actual_rain, timestamp 
+                         FROM predictions 
                          WHERE actual_rain IS NOT NULL AND used_in_training = FALSE''')
         else:
-            c.execute('''SELECT predicted_rain_prob, temp, humidity, pressure, clouds, 
-                         wind_speed, actual_rain FROM predictions 
+            c.execute('''SELECT temp, humidity, pressure, wind_speed, clouds, 
+                         predicted_rain_prob, actual_rain, timestamp 
+                         FROM predictions 
                          WHERE actual_rain IS NOT NULL AND used_in_training = 0''')
         verified_data = c.fetchall()
         
-        # Prepare training data
+        # Build proper 14-feature vectors matching extract_rain_features format
         X_new = []
         y_new = []
         for row in verified_data:
-            X_new.append([row[0], row[1], row[2], row[3], row[4], row[5]])
+            temp, humidity, pressure, wind_speed, clouds = row[0], row[1], row[2], row[3], row[4]
+            
+            # Calculate dew point
+            dew_point = calculate_dew_point(temp, humidity)
+            
+            # Use current values as forecast averages (best estimate without stored forecast)
+            features = [
+                temp, humidity, pressure, wind_speed, clouds, dew_point,
+                humidity, humidity,  # avg_humidity, max_humidity
+                pressure, 0.0,       # avg_pressure, pressure_change
+                clouds, clouds,      # avg_clouds, max_clouds
+                0.0, 0              # total_rain_forecast, periods_with_rain
+            ]
+            X_new.append(features)
             y_new.append(1 if row[6] > 0 else 0)
         
         X_new = np.array(X_new)
@@ -862,8 +877,8 @@ def retrain():
         if len(y_new) > 0:
             tp = fp = tn = fn = 0
             for i, row in enumerate(verified_data):
-                pred = 1 if row[0] > 0.5 else 0
-                actual = 1 if row[6] > 0 else 0
+                pred = 1 if row[5] > 0.5 else 0  # predicted_rain_prob is now index 5
+                actual = 1 if row[6] > 0 else 0  # actual_rain is index 6
                 if pred == 1 and actual == 1: tp += 1
                 elif pred == 1 and actual == 0: fp += 1
                 elif pred == 0 and actual == 0: tn += 1
