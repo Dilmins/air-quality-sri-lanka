@@ -671,15 +671,15 @@ def get_predictions():
         conn = get_db()
         c = conn.cursor()
         
-        # Get last 50 predictions regardless of time
+        # Get ALL predictions, sorted by timestamp DESC
         if USE_POSTGRES:
             c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
                          clouds, recommendation, actual_rain, verification_time
-                         FROM predictions ORDER BY timestamp DESC LIMIT 50''')
+                         FROM predictions ORDER BY timestamp DESC''')
         else:
             c.execute('''SELECT id, timestamp, city, predicted_rain_prob, temp, humidity, 
                          clouds, recommendation, actual_rain, verification_time
-                         FROM predictions ORDER BY timestamp DESC LIMIT 50''')
+                         FROM predictions ORDER BY timestamp DESC''')
         
         predictions = []
         for row in c.fetchall():
@@ -887,8 +887,10 @@ def retrain():
         
         # Retrain rain model
         global rain_model
+        training_success = False
         if rain_model is not None:
             try:
+                logger.info(f"🔄 Starting model retraining with {len(y_new)} samples...")
                 rain_model.n_estimators += 20
                 rain_model.fit(X_new, y_new)
                 
@@ -896,9 +898,11 @@ def retrain():
                 with open('rain_model.pkl', 'wb') as f:
                     pickle.dump(rain_model, f)
                 
-                logger.info(f"✅ Rain model retrained with {len(y_new)} samples")
+                training_success = True
+                logger.info(f"✅ Rain model retrained successfully! New estimators: {rain_model.n_estimators}")
             except Exception as e:
-                logger.warning(f"Rain model retrain failed: {e}")
+                logger.error(f"❌ Rain model retrain failed: {e}")
+                training_success = False
         
         # Mark data as used in training (KEEP THE DATA)
         if USE_POSTGRES:
@@ -923,11 +927,14 @@ def retrain():
         conn.commit()
         conn.close()
         
+        logger.info(f"📊 Training complete - Accuracy before: {old_accuracy*100:.1f}%")
+        
         return jsonify({
             'success': True, 
-            'message': f'Model retrained with {verified} samples. Data preserved.',
+            'message': f'Model retrained with {verified} samples. Data preserved. Check logs for training details.',
             'samples_trained': verified,
-            'pre_training_accuracy': round(old_accuracy * 100, 1)
+            'pre_training_accuracy': round(old_accuracy * 100, 1),
+            'training_success': training_success
         })
     except Exception as e:
         logger.error(f"Retrain error: {e}")
