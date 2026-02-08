@@ -79,7 +79,7 @@ CITIES = {
     "Madugeta MHPP": {"lat": 6.3706, "lon": 80.4088},
     "Ethamala Ella MHPP": {"lat": 6.2269, "lon": 80.4979},
     "Muvumbe SHPP": {"lat": -1.3186, "lon": 30.0789},
-    "Bukinda SHPP": {"lat": -1.1858, "lon": 30.1206}
+    "TIMEX BUKINDA": {"lat": -1.1858, "lon": 30.1206}
 }
 
 current_city = "Colombo"
