@@ -93,26 +93,22 @@ latest_data = {
     'explanation': 'Fetching data...', 'timestamp': datetime.now().isoformat(), 'city': current_city
 }
 
-# Debug file system
-try:
-    logger.info(f"DEBUG: CWD = {os.getcwd()}")
-    logger.info(f"DEBUG: Files in CWD = {os.listdir('.')}")
-    if os.path.exists('Backend'):
-        logger.info(f"DEBUG: Files in Backend/ = {os.listdir('Backend')}")
-except Exception as e:
-    logger.error(f"DEBUG Error: {e}")
-
 rain_model = None
 try:
+    # Try loading from current directory first (Railway root)
     with open('rain_model.pkl', 'rb') as f:
         rain_model = pickle.load(f)
         logger.info("Rain model loaded from root")
 except:
     try:
+        # Fallback to Backend/ if running locally in root
         with open('Backend/rain_model.pkl', 'rb') as f:
             rain_model = pickle.load(f)
             logger.info("Rain model loaded from Backend/")
     except Exception as e:
+        logger.warning(f"Rain model not found. Error: {e}")
+        logger.info(f"CWD: {os.getcwd()}")
+        logger.info(f"Files: {os.listdir('.')}")
         logger.warning(f"Rain model not found. Error: {e}")
 
 def init_database():
