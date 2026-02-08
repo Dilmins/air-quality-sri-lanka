@@ -93,6 +93,15 @@ latest_data = {
     'explanation': 'Fetching data...', 'timestamp': datetime.now().isoformat(), 'city': current_city
 }
 
+# Debug file system
+try:
+    logger.info(f"DEBUG: CWD = {os.getcwd()}")
+    logger.info(f"DEBUG: Files in CWD = {os.listdir('.')}")
+    if os.path.exists('Backend'):
+        logger.info(f"DEBUG: Files in Backend/ = {os.listdir('Backend')}")
+except Exception as e:
+    logger.error(f"DEBUG Error: {e}")
+
 rain_model = None
 try:
     with open('rain_model.pkl', 'rb') as f:
@@ -103,8 +112,8 @@ except:
         with open('Backend/rain_model.pkl', 'rb') as f:
             rain_model = pickle.load(f)
             logger.info("Rain model loaded from Backend/")
-    except:
-        logger.warning("Rain model not found")
+    except Exception as e:
+        logger.warning(f"Rain model not found. Error: {e}")
 
 def init_database():
     conn = get_db()
