@@ -579,6 +579,7 @@ def background_updater():
                 logger.info(f"Limit reached ({total_predictions}/50). Display only.")
                 aqi_data = fetch_outdoor_aqi(system.lat, system.lon, system.api_key)
                 weather_data = fetch_weather(system.lat, system.lon, system.api_key)
+                forecast_data = fetch_24h_forecast(system.lat, system.lon, system.api_key)
                 
                 if aqi_data and weather_data:
                     timestamp = datetime.now()
@@ -589,10 +590,24 @@ def background_updater():
                         is_anomaly = system.anomaly_detector.detect(features)
                         outdoor_aqi = float(aqi_data['aqi'] * 50)
                         
+                        # Calculate rain probability for display-only mode
+                        rain_probability = 0.0
+                        rain_risk_curve = []
+                        if forecast_data:
+                            try:
+                                rain_features = extract_rain_features(weather_data, forecast_data)
+                                if rain_model and rain_features is not None:
+                                    rain_proba_array = rain_model.predict_proba([rain_features])
+                                    raw_prob = float(rain_proba_array[0][1])
+                                    rain_probability = max(0.0, min(1.0, raw_prob))
+                                    rain_risk_curve = generate_rain_risk_curve(forecast_data, rain_probability)
+                            except Exception as e:
+                                logger.error(f"Background rain prediction error: {e}")
+
                         recommendation, explanation, metadata = system.recommender.recommend(
                             indoor_aqi, outdoor_aqi, weather_data['temp'],
                             weather_data['humidity'], weather_data['wind_speed'],
-                            is_anomaly, 0.0
+                            is_anomaly, rain_probability
                         )
                         
                         latest_data = {
@@ -601,7 +616,7 @@ def background_updater():
                             'pressure': float(weather_data['pressure']), 'clouds': float(weather_data['clouds']),
                             'indoor_aqi': float(indoor_aqi), 'indoor_risk': str(metadata['indoor_risk']),
                             'outdoor_risk': str(metadata['outdoor_risk']), 'is_anomaly': bool(is_anomaly),
-                            'rain_probability_24h': 0.0, 'rain_risk_curve': [],
+                            'rain_probability_24h': float(rain_probability), 'rain_risk_curve': rain_risk_curve,
                             'recommendation': str(recommendation), 'explanation': str(explanation),
                             'timestamp': timestamp.isoformat(), 'city': current_city,
                             'limit_reached': True, 'total_predictions': total_predictions
