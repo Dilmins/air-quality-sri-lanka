@@ -4,5 +4,8 @@ builder = "NIXPACKS"
 [build.nixpacksPlan.phases.setup]
 nixPkgs = ["python39"]
 
+[build.nixpacksPlan.phases.build]
+cmds = ["cd Backend && python create_model.py && cd .."]
+
 [deploy]
 startCommand = "gunicorn Backend.app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120"
