@@ -297,6 +297,12 @@ def engineer_features(aqi_data, weather_data, timestamp):
         return None
     hour = timestamp.hour
     day_of_week = timestamp.weekday()
+    
+    # Calculate dew point
+    temp = weather_data['temp']
+    humidity = weather_data['humidity']
+    dew_point = calculate_dew_point(temp, humidity)
+    
     return np.array([
         aqi_data['aqi'], aqi_data['pm25'], aqi_data['pm10'], aqi_data['no2'], aqi_data['o3'], aqi_data['co'],
         weather_data['temp'], weather_data['humidity'], weather_data['wind_speed'], weather_data['pressure'],
@@ -304,16 +310,27 @@ def engineer_features(aqi_data, weather_data, timestamp):
         1 if day_of_week >= 5 else 0, 1 if hour < 6 or hour > 22 else 0,
         weather_data['temp'] * weather_data['humidity'] / 100.0, weather_data['wind_speed'] * aqi_data['aqi'],
         aqi_data['pm25'] + 0.5 * aqi_data['pm10'] + 0.3 * aqi_data['no2'],
-        np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24)
+        np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24),
+        weather_data['clouds'], dew_point
     ], dtype=np.float32)
 
 class IAQRegressor:
     def __init__(self):
-        # Ensemble: RandomForest + GradientBoosting for better accuracy
-        self.rf_model = RandomForestRegressor(n_estimators=50, max_depth=10, 
-                                             min_samples_split=10, random_state=42)
-        self.gb_model = GradientBoostingRegressor(n_estimators=30, max_depth=6, 
-                                                  learning_rate=0.1, random_state=42)
+        # Optimized Ensemble: RandomForest + GradientBoosting
+        self.rf_model = RandomForestRegressor(
+            n_estimators=100, 
+            max_depth=15, 
+            min_samples_split=15,
+            min_samples_leaf=8,
+            random_state=42
+        )
+        self.gb_model = GradientBoostingRegressor(
+            n_estimators=80, 
+            max_depth=8, 
+            learning_rate=0.05,
+            subsample=0.8,
+            random_state=42
+        )
         self.is_trained = False
     
     def train(self, X, y):
@@ -351,14 +368,21 @@ class IAQRegressor:
         gb_pred = self.gb_model.predict(X)[0]
         ml_pred = 0.6 * rf_pred + 0.4 * gb_pred
         
-        # Hybrid: 70% ML, 30% physics (ML learns corrections to physics)
-        final_pred = 0.7 * ml_pred + 0.3 * physics_pred
+        # Hybrid: 75% ML, 25% physics (more trust in optimized ML)
+        final_pred = 0.75 * ml_pred + 0.25 * physics_pred
         
         return float(max(1.0, min(500.0, final_pred)))
 
 class IAQAnomalyDetector:
     def __init__(self):
-        self.model = IsolationForest(n_estimators=30, max_samples=128, contamination=0.1, random_state=42, n_jobs=1)
+        # Optimized IsolationForest for better anomaly detection
+        self.model = IsolationForest(
+            n_estimators=50, 
+            max_samples=256, 
+            contamination=0.05, 
+            random_state=42, 
+            n_jobs=1
+        )
         self.is_trained = False
     
     def train(self, X):
@@ -424,21 +448,25 @@ class IAQSystem:
         self._initialize_models()
         
     def _initialize_models(self):
-        n = 800  # More training data
+        n = 1000  # More training data for better initialization
         X, y = [], []
         for _ in range(n):
             oa = np.random.uniform(5, 200)  # outdoor AQI
             ws = np.random.uniform(0, 12)   # wind speed
             hum = np.random.uniform(30, 95)
             temp = np.random.uniform(15, 40)
+            clouds = np.random.uniform(0, 100)
+            
+            # Calculate dew point
+            dew_point = calculate_dew_point(temp, hum)
             
             # Simulate realistic indoor/outdoor relationship
             infiltration = 0.35 + 0.05 * ws + 0.02 * abs(temp - 25)
             particle_loss = 0.15
             indoor = oa * (infiltration - particle_loss) + np.random.uniform(-5, 10)
             
-            f = np.random.rand(20)
-            f[0], f[6], f[7], f[8] = oa, temp, hum, ws
+            f = np.random.rand(22)  # Updated to 22 features
+            f[0], f[6], f[7], f[8], f[20], f[21] = oa, temp, hum, ws, clouds, dew_point
             X.append(f)
             y.append(max(1, min(500, indoor)))
             

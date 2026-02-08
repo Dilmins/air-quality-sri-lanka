@@ -13,7 +13,7 @@ print("RAIN PREDICTION MODEL TRAINING")
 print("="*70)
 
 # Generate realistic meteorological dataset with noise and edge cases
-n_samples = 20000  # Reduced for your hardware
+n_samples = 25000  # Increased for better model quality
 X = np.zeros((n_samples, 14))
 y = np.zeros(n_samples)
 
@@ -153,15 +153,16 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"\nTrain set: {len(X_train):,} samples")
 print(f"Test set: {len(X_test):,} samples")
 
-# Train Random Forest with proper regularization
-print("\nTraining Random Forest Classifier with regularization...")
+# Train Random Forest with optimized regularization
+print("\nTraining Random Forest Classifier with optimized parameters...")
 rf = RandomForestClassifier(
-    n_estimators=100,           # Moderate number of trees
-    max_depth=12,               # Limit tree depth
-    min_samples_split=20,       # Require more samples to split
-    min_samples_leaf=10,        # Require more samples in leaves
+    n_estimators=150,           # Increased for better generalization
+    max_depth=10,               # Reduced to prevent overfitting
+    min_samples_split=25,       # More conservative splitting
+    min_samples_leaf=12,        # Smoother decision boundaries
     max_features='sqrt',        # Use subset of features
     max_samples=0.8,           # Bootstrap with 80% of data
+    min_impurity_decrease=0.0001,  # Prevent unnecessary splits
     class_weight='balanced',    # Handle class imbalance
     bootstrap=True,
     oob_score=True,            # Out-of-bag score for validation
@@ -198,7 +199,7 @@ print("\nCalibrating probability predictions...")
 calibrated_model = CalibratedClassifierCV(
     rf, 
     method='isotonic',  # Better for non-parametric calibration
-    cv=3,              # Reduced for smaller dataset
+    cv=5,              # Increased for better calibration
     n_jobs=-1
 )
 

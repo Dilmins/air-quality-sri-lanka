@@ -7,3 +7,17 @@ venv/
 ENV/
 .vscode/
 .idea/
+
+# Database files
+*.db
+monitoring.db
+
+# Local deployment scripts
+deploy.bat
+
+# Optimization script (not needed in production)
+Backend/optimize_models.py
+
+# OS files
+.DS_Store
+Thumbs.db
