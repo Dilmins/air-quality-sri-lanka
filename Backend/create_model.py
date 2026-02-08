@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
 import pickle
 import os
+import json
 
 np.random.seed(42)
 
@@ -12,10 +13,27 @@ print("="*70)
 print("RAIN PREDICTION MODEL TRAINING")
 print("="*70)
 
-# Generate realistic meteorological dataset with noise and edge cases
-n_samples = 25000  # Increased for better model quality
-X = np.zeros((n_samples, 14))
-y = np.zeros(n_samples)
+# 1. Load Real Verified Data (if available)
+real_X = []
+real_y = []
+try:
+    if os.path.exists('verified_data.json'):
+        with open('verified_data.json', 'r') as f:
+            data = json.load(f)
+            for item in data:
+                if len(item['features']) == 14:
+                    real_X.append(item['features'])
+                    real_y.append(item['actual_rain'])
+        print(f"\nLoaded {len(real_X)} verified samples from database.")
+    else:
+        print("\nNo verified_data.json found. Using only synthetic data.")
+except Exception as e:
+    print(f"\nWarning: Error loading verified data: {e}")
+
+# 2. Generate Synthetic Data
+n_synthetic = 25000  # Increased for better model quality
+X_synthetic = np.zeros((n_synthetic, 14))
+y_synthetic = np.zeros(n_synthetic)
 
 print("\nGenerating realistic weather scenarios with noise...")
 
@@ -121,18 +139,39 @@ for i in range(n_samples):
     max_clouds_24h = np.clip(max_clouds_24h, mean_clouds_24h, 100)
     total_rain = max(0, total_rain)
     
-    X[i] = [
+    X_synthetic[i] = [
         temp, hum, pres, wind, clouds, dew_point,
         mean_hum_24h, max_hum_24h, mean_pres_24h, pres_trend,
         mean_clouds_24h, max_clouds_24h, total_rain, rain_steps
     ]
     
-    y[i] = rain_label
+    y_synthetic[i] = rain_label
 
-y = y.astype(int)
+y_synthetic = y_synthetic.astype(int)
 
-# Shuffle the data to ensure randomness
-shuffle_idx = np.random.permutation(n_samples)
+# 3. Combine Datasets
+if len(real_X) > 0:
+    real_X = np.array(real_X)
+    real_y = np.array(real_y)
+    
+    # Oversample real data to make it significant (at least 10% of dataset or 50x duplication)
+    # This ensures the model pays attention to the real observed patterns
+    n_copies = max(1, int(n_synthetic * 0.05 / len(real_X))) 
+    n_copies = min(n_copies, 100) # Cap at 100x to prevent overfitting to noise
+    
+    print(f"Oversampling real verified data {n_copies}x to influence training...")
+    
+    real_X_expanded = np.tile(real_X, (n_copies, 1))
+    real_y_expanded = np.tile(real_y, n_copies)
+    
+    X = np.vstack([X_synthetic, real_X_expanded])
+    y = np.concatenate([y_synthetic, real_y_expanded])
+else:
+    X = X_synthetic
+    y = y_synthetic
+
+# Shuffle user data and synthetic data together
+shuffle_idx = np.random.permutation(len(y))
 X = X[shuffle_idx]
 y = y[shuffle_idx]
 

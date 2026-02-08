@@ -144,11 +144,14 @@ def init_database():
     try:
         if USE_POSTGRES:
             c.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS used_in_training BOOLEAN DEFAULT FALSE")
+            c.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS features TEXT")
         else:
             c.execute("PRAGMA table_info(predictions)")
             columns = [col[1] for col in c.fetchall()]
             if 'used_in_training' not in columns:
                 c.execute("ALTER TABLE predictions ADD COLUMN used_in_training INTEGER DEFAULT 0")
+            if 'features' not in columns:
+                c.execute("ALTER TABLE predictions ADD COLUMN features TEXT")
     except Exception as e:
         logger.warning(f"Migration warning: {e}")
     
@@ -176,18 +179,18 @@ def log_prediction(data: Dict):
         c = conn.cursor()
         if USE_POSTGRES:
             c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
-                         humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
-                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
+                         humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation, features)
+                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                       (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
                        data['temp'], data['humidity'], data['pressure'], data['clouds'],
-                       data['wind_speed'], data['indoor_aqi'], data['recommendation']))
+                       data['wind_speed'], data['indoor_aqi'], data['recommendation'], data.get('features')))
         else:
             c.execute('''INSERT INTO predictions (timestamp, city, predicted_rain_prob, outdoor_aqi, temp, 
-                         humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                         humidity, pressure, clouds, wind_speed, indoor_aqi, recommendation, features)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                       (data['timestamp'], data['city'], data['rain_probability_24h'], data['outdoor_aqi'],
                        data['temp'], data['humidity'], data['pressure'], data['clouds'],
-                       data['wind_speed'], data['indoor_aqi'], data['recommendation']))
+                       data['wind_speed'], data['indoor_aqi'], data['recommendation'], data.get('features')))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -506,16 +509,17 @@ class IAQSystem:
         
         rain_probability = 0.0
         rain_risk_curve = []
+        rain_features = None
         
-        if rain_model and forecast_data:
+        if forecast_data:
             try:
                 rain_features = extract_rain_features(weather_data, forecast_data)
-                if rain_features is not None:
+                if rain_model and rain_features is not None:
                     rain_proba_array = rain_model.predict_proba([rain_features])
                     rain_probability = float(rain_proba_array[0][1])
                     rain_risk_curve = generate_rain_risk_curve(forecast_data, rain_probability)
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Rain prediction error: {e}")
         
         if not rain_risk_curve:
             base_risk = max(10, min(60, (weather_data['humidity'] - 50) * 1.2))
@@ -526,6 +530,16 @@ class IAQSystem:
             weather_data['wind_speed'], is_anomaly, rain_probability
         )
         
+        # Serialize features if available
+        features_json = None
+        if rain_features is not None:
+            try:
+                import json
+                features_as_list = rain_features.tolist() if hasattr(rain_features, 'tolist') else list(rain_features)
+                features_json = json.dumps(features_as_list)
+            except:
+                pass
+
         result = {
             'outdoor_aqi': float(outdoor_aqi), 'temp': float(weather_data['temp']),
             'humidity': float(weather_data['humidity']), 'wind_speed': float(weather_data['wind_speed']),
@@ -534,7 +548,8 @@ class IAQSystem:
             'outdoor_risk': str(metadata['outdoor_risk']), 'is_anomaly': bool(is_anomaly),
             'rain_probability_24h': float(rain_probability), 'rain_risk_curve': rain_risk_curve,
             'recommendation': str(recommendation), 'explanation': str(explanation),
-            'timestamp': timestamp.isoformat(), 'city': current_city
+            'timestamp': timestamp.isoformat(), 'city': current_city,
+            'features': features_json
         }
         
         log_prediction(result)
@@ -875,80 +890,87 @@ def retrain():
             return jsonify({'error': f'Need 50 new verified samples. Have {verified}'}), 400
         
         # Get verified data with all needed features
+        # Get verified data with features
         if USE_POSTGRES:
-            c.execute('''SELECT temp, humidity, pressure, wind_speed, clouds, 
-                         predicted_rain_prob, actual_rain, timestamp 
+            c.execute('''SELECT features, actual_rain 
                          FROM predictions 
-                         WHERE actual_rain IS NOT NULL AND used_in_training = FALSE''')
+                         WHERE actual_rain IS NOT NULL AND used_in_training = FALSE AND features IS NOT NULL''')
         else:
-            c.execute('''SELECT temp, humidity, pressure, wind_speed, clouds, 
-                         predicted_rain_prob, actual_rain, timestamp 
+            c.execute('''SELECT features, actual_rain 
                          FROM predictions 
-                         WHERE actual_rain IS NOT NULL AND used_in_training = 0''')
+                         WHERE actual_rain IS NOT NULL AND used_in_training = 0 AND features IS NOT NULL''')
         verified_data = c.fetchall()
         
-        # Build proper 14-feature vectors matching extract_rain_features format
-        X_new = []
-        y_new = []
+        if len(verified_data) < 10:
+             conn.close()
+             return jsonify({'error': f'Need at least 10 new verified samples with feature data. Have {len(verified_data)}'}), 400
+
+        # Export to JSON
+        import json
+        export_data = []
+        valid_count = 0
+        
         for row in verified_data:
-            temp, humidity, pressure, wind_speed, clouds = row[0], row[1], row[2], row[3], row[4]
-            
-            # Calculate dew point
-            dew_point = calculate_dew_point(temp, humidity)
-            
-            # Use current values as forecast averages (best estimate without stored forecast)
-            features = [
-                temp, humidity, pressure, wind_speed, clouds, dew_point,
-                humidity, humidity,  # avg_humidity, max_humidity
-                pressure, 0.0,       # avg_pressure, pressure_change
-                clouds, clouds,      # avg_clouds, max_clouds
-                0.0, 0              # total_rain_forecast, periods_with_rain
-            ]
-            X_new.append(features)
-            y_new.append(1 if row[6] > 0 else 0)
-        
-        X_new = np.array(X_new)
-        y_new = np.array(y_new)
-        
-        # Calculate accuracy before training
-        old_accuracy = 0
-        if len(y_new) > 0:
-            tp = fp = tn = fn = 0
-            for i, row in enumerate(verified_data):
-                pred = 1 if row[5] > 0.5 else 0  # predicted_rain_prob is now index 5
-                actual = 1 if row[6] > 0 else 0  # actual_rain is index 6
-                if pred == 1 and actual == 1: tp += 1
-                elif pred == 1 and actual == 0: fp += 1
-                elif pred == 0 and actual == 0: tn += 1
-                else: fn += 1
-            old_accuracy = (tp + tn) / len(y_new) if len(y_new) > 0 else 0
-        
-        # Retrain rain model
-        global rain_model
-        training_success = False
-        if rain_model is not None:
             try:
-                logger.info(f"🔄 Starting model retraining with {len(y_new)} samples...")
-                rain_model.n_estimators += 20
-                rain_model.fit(X_new, y_new)
+                features_str = row[0]
+                actual_rain = row[1]
+                if isinstance(features_str, str):
+                    features = json.loads(features_str)
+                else:
+                    features = features_str
                 
-                import pickle
-                with open('rain_model.pkl', 'wb') as f:
-                    pickle.dump(rain_model, f)
-                
-                training_success = True
-                logger.info(f"✅ Rain model retrained successfully! New estimators: {rain_model.n_estimators}")
+                if isinstance(features, list) and len(features) == 14:
+                    export_data.append({
+                        'features': features,
+                        'actual_rain': 1 if actual_rain > 0 else 0
+                    })
+                    valid_count += 1
             except Exception as e:
-                logger.error(f"❌ Rain model retrain failed: {e}")
-                training_success = False
+                logger.error(f"Error parsing feature data: {e}")
+                continue
         
-        # Mark data as used in training (KEEP THE DATA)
-        if USE_POSTGRES:
-            c.execute("""UPDATE predictions SET used_in_training = TRUE 
-                        WHERE actual_rain IS NOT NULL AND used_in_training = FALSE""")
-        else:
-            c.execute("""UPDATE predictions SET used_in_training = 1 
-                        WHERE actual_rain IS NOT NULL AND used_in_training = 0""")
+        if valid_count == 0:
+             conn.close()
+             return jsonify({'error': 'No valid feature vectors found in verified data'}), 400
+
+        with open('verified_data.json', 'w') as f:
+            json.dump(export_data, f)
+            
+        conn.close()
+        
+        # Run training script
+        import subprocess
+        logger.info(f"🔄 Starting model retraining with {valid_count} samples via create_model.py...")
+        
+        try:
+            result = subprocess.run(['python', 'create_model.py'], check=True, capture_output=True, text=True)
+            logger.info("✅ create_model.py completed successfully")
+            
+            # Reload model
+            global rain_model
+            with open('rain_model.pkl', 'rb') as f:
+                rain_model = pickle.load(f)
+            logger.info("✅ New rain model loaded into memory")
+            
+            # Mark data as used
+            conn = get_db()
+            c = conn.cursor()
+            if USE_POSTGRES:
+                c.execute("UPDATE predictions SET used_in_training = TRUE WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = FALSE")
+            else:
+                c.execute("UPDATE predictions SET used_in_training = 1 WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = 0")
+            conn.commit()
+            conn.close()
+            
+            return jsonify({
+                'success': True, 
+                'message': f'Retrained successfully with {valid_count} new samples',
+                'output': result.stdout[:200] + '...'
+            })
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ Training script failed: {e.stderr}")
+            return jsonify({'error': f"Training failed: {e.stderr}"}), 500
         
         # Log training history
         if USE_POSTGRES:
