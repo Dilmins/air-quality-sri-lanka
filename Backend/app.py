@@ -516,7 +516,14 @@ class IAQSystem:
                 rain_features = extract_rain_features(weather_data, forecast_data)
                 if rain_model and rain_features is not None:
                     rain_proba_array = rain_model.predict_proba([rain_features])
-                    rain_probability = float(rain_proba_array[0][1])
+                    raw_prob = float(rain_proba_array[0][1])
+                    
+                    # Clip probability to [0.0, 1.0] to prevent "10000%" or "110%" display errors
+                    rain_probability = max(0.0, min(1.0, raw_prob))
+                    
+                    if raw_prob > 1.0 or raw_prob < 0.0:
+                         logger.warning(f"Feature: Probability out of bounds: {raw_prob}. Clipped to {rain_probability}.")
+
                     rain_risk_curve = generate_rain_risk_curve(forecast_data, rain_probability)
             except Exception as e:
                 logger.error(f"Rain prediction error: {e}")
