@@ -97,9 +97,14 @@ rain_model = None
 try:
     with open('rain_model.pkl', 'rb') as f:
         rain_model = pickle.load(f)
-        logger.info("Rain model loaded")
+        logger.info("Rain model loaded from root")
 except:
-    logger.warning("Rain model not found")
+    try:
+        with open('Backend/rain_model.pkl', 'rb') as f:
+            rain_model = pickle.load(f)
+            logger.info("Rain model loaded from Backend/")
+    except:
+        logger.warning("Rain model not found")
 
 def init_database():
     conn = get_db()
