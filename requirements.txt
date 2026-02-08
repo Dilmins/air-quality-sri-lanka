@@ -1,6 +1,6 @@
 ﻿Flask==3.0.0
 flask-cors==4.0.0
-numpy==1.24.0
+numpy>=2.0.0
 requests==2.31.0
 scikit-learn==1.6.1
 gunicorn==21.2.0
