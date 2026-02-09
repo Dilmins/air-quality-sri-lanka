@@ -976,22 +976,32 @@ def retrain():
             
             # Reload model
             global rain_model
-            # Model is saved to CWD by the script or Backend/? Script saves to 'rain_model.pkl' in its CWD.
-            # Convert script to save to absolute path or handle CWD.
-            # Assuming app running in root, script running in root, so it saves to root.
+            # Model is saved to CWD by the script (or Backend/ if run there, but we run from root)
+            # The script writes to 'rain_model.pkl' in its CWD. 
+            # If we call `python Backend/create_model.py`, CWD is root, so it saves to root.
             with open('rain_model.pkl', 'rb') as f:
                 rain_model = pickle.load(f)
             logger.info("✅ New rain model loaded into memory")
             
-            # Mark data as used (optional now since we re-select all, but good for tracking new vs old)
-            conn = get_db()
-            c = conn.cursor()
-            if USE_POSTGRES:
-                c.execute("UPDATE predictions SET used_in_training = TRUE WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = FALSE")
-            else:
-                c.execute("UPDATE predictions SET used_in_training = 1 WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = 0")
-            conn.commit()
-            conn.close()
+            # Record history (PRESERVE THE COUNTER)
+            try:
+                conn = get_db()
+                c = conn.cursor()
+                # Get current accuracy on verified data
+                current_accuracy = 0.0 # Placeholder/TODO: Parse from script output or calc
+                
+                if USE_POSTGRES:
+                    c.execute("INSERT INTO model_history (timestamp, samples_count, accuracy) VALUES (%s, %s, %s)",
+                              (datetime.now(), valid_count, 0.0))
+                    c.execute("UPDATE predictions SET used_in_training = TRUE WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = FALSE")
+                else:
+                    c.execute("INSERT INTO model_history (timestamp, samples_count, accuracy) VALUES (?, ?, ?)",
+                              (datetime.now(), valid_count, 0.0))
+                    c.execute("UPDATE predictions SET used_in_training = 1 WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = 0")
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Error updating history: {e}")
             
             return jsonify({
                 'success': True, 

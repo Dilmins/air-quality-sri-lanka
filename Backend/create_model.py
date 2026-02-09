@@ -46,7 +46,7 @@ scenarios = {
     'rain': {'weight': 0.05, 'rain_prob': 0.95}  # Not perfect
 }
 
-for i in range(n_samples):
+for i in range(n_synthetic):
     scenario_type = np.random.choice(
         list(scenarios.keys()),
         p=[s['weight'] for s in scenarios.values()]
@@ -176,6 +176,7 @@ X = X[shuffle_idx]
 y = y[shuffle_idx]
 
 
+n_samples = len(y)
 rain_count = y.sum()
 no_rain_count = len(y) - rain_count
 
