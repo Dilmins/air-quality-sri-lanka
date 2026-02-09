@@ -127,6 +127,9 @@ def init_database():
         c.execute('''CREATE TABLE IF NOT EXISTS training_history
                      (id SERIAL PRIMARY KEY, trained_at TIMESTAMP, samples_count INTEGER, 
                       model_version INTEGER, accuracy REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS model_history
+                     (id SERIAL PRIMARY KEY, timestamp TIMESTAMP, samples_count INTEGER, 
+                      accuracy REAL)''')
     else:
         c.execute('''CREATE TABLE IF NOT EXISTS predictions
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, city TEXT NOT NULL,
@@ -139,6 +142,9 @@ def init_database():
         c.execute('''CREATE TABLE IF NOT EXISTS training_history
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, trained_at TEXT, samples_count INTEGER, 
                       model_version INTEGER, accuracy REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS model_history
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, samples_count INTEGER, 
+                      accuracy REAL)''')
     
     # Migration: Add used_in_training column if it doesn't exist
     try:
