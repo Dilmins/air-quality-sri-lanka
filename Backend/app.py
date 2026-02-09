@@ -912,20 +912,20 @@ def retrain():
             return jsonify({'error': f'Need 50 new verified samples. Have {verified}'}), 400
         
         # Get verified data with all needed features
-        # Get verified data with features
+        # Get ALL verified data (Cumulative Training) to prevent forgetting
         if USE_POSTGRES:
             c.execute('''SELECT features, actual_rain 
                          FROM predictions 
-                         WHERE actual_rain IS NOT NULL AND used_in_training = FALSE AND features IS NOT NULL''')
+                         WHERE actual_rain IS NOT NULL AND features IS NOT NULL''')
         else:
             c.execute('''SELECT features, actual_rain 
                          FROM predictions 
-                         WHERE actual_rain IS NOT NULL AND used_in_training = 0 AND features IS NOT NULL''')
+                         WHERE actual_rain IS NOT NULL AND features IS NOT NULL''')
         verified_data = c.fetchall()
         
         if len(verified_data) < 10:
              conn.close()
-             return jsonify({'error': f'Need at least 10 new verified samples with feature data. Have {len(verified_data)}'}), 400
+             return jsonify({'error': f'Need at least 10 verified samples total. Have {len(verified_data)}'}), 400
 
         # Export to JSON
         import json
@@ -955,26 +955,35 @@ def retrain():
              conn.close()
              return jsonify({'error': 'No valid feature vectors found in verified data'}), 400
 
+        # Save to root (CWD) where app.py is running
         with open('verified_data.json', 'w') as f:
             json.dump(export_data, f)
             
         conn.close()
         
-        # Run training script
+        # Run training script (It is in Backend/ folder)
         import subprocess
-        logger.info(f"🔄 Starting model retraining with {valid_count} samples via create_model.py...")
+        script_path = os.path.join('Backend', 'create_model.py')
+        if not os.path.exists(script_path):
+            script_path = 'create_model.py' # Fallback for local dev if CWD is Backend
+            
+        logger.info(f"🔄 Starting model retraining with {valid_count} samples via {script_path}...")
         
         try:
-            result = subprocess.run(['python', 'create_model.py'], check=True, capture_output=True, text=True)
+            # Pass absolute path to be safe
+            result = subprocess.run(['python', script_path], check=True, capture_output=True, text=True)
             logger.info("✅ create_model.py completed successfully")
             
             # Reload model
             global rain_model
+            # Model is saved to CWD by the script or Backend/? Script saves to 'rain_model.pkl' in its CWD.
+            # Convert script to save to absolute path or handle CWD.
+            # Assuming app running in root, script running in root, so it saves to root.
             with open('rain_model.pkl', 'rb') as f:
                 rain_model = pickle.load(f)
             logger.info("✅ New rain model loaded into memory")
             
-            # Mark data as used
+            # Mark data as used (optional now since we re-select all, but good for tracking new vs old)
             conn = get_db()
             c = conn.cursor()
             if USE_POSTGRES:
@@ -986,7 +995,7 @@ def retrain():
             
             return jsonify({
                 'success': True, 
-                'message': f'Retrained successfully with {valid_count} new samples',
+                'message': f'Retrained successfully with {valid_count} verified samples (Cumulative)',
                 'output': result.stdout[:200] + '...'
             })
             
