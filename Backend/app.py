@@ -577,7 +577,10 @@ def background_updater():
         try:
             conn = get_db()
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM predictions")
+            if USE_POSTGRES:
+                c.execute("SELECT COUNT(*) FROM predictions WHERE used_in_training = FALSE")
+            else:
+                c.execute("SELECT COUNT(*) FROM predictions WHERE used_in_training = 0")
             total_predictions = c.fetchone()[0]
             conn.close()
             
@@ -660,7 +663,10 @@ def get_data():
     try:
         conn = get_db()
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM predictions")
+        if USE_POSTGRES:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE used_in_training = FALSE")
+        else:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE used_in_training = 0")
         total = c.fetchone()[0]
         if USE_POSTGRES:
             c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL AND used_in_training = FALSE")
@@ -700,7 +706,10 @@ def get_stats():
     try:
         conn = get_db()
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM predictions")
+        if USE_POSTGRES:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE used_in_training = FALSE")
+        else:
+            c.execute("SELECT COUNT(*) FROM predictions WHERE used_in_training = 0")
         total = c.fetchone()[0]
         if USE_POSTGRES:
             c.execute("SELECT COUNT(*) FROM predictions WHERE actual_rain IS NOT NULL AND used_in_training = FALSE")
@@ -999,11 +1008,25 @@ def retrain():
                 if USE_POSTGRES:
                     c.execute("INSERT INTO model_history (timestamp, samples_count, accuracy) VALUES (%s, %s, %s)",
                               (datetime.now(), valid_count, 0.0))
-                    c.execute("UPDATE predictions SET used_in_training = TRUE WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = FALSE")
+                    # Archive oldest 50 items (Limit Reset) - Consumes the batch
+                    c.execute("""UPDATE predictions SET used_in_training = TRUE 
+                                 WHERE id IN (
+                                     SELECT id FROM predictions 
+                                     WHERE used_in_training = FALSE 
+                                     ORDER BY timestamp ASC 
+                                     LIMIT 50
+                                 )""")
                 else:
                     c.execute("INSERT INTO model_history (timestamp, samples_count, accuracy) VALUES (?, ?, ?)",
                               (datetime.now(), valid_count, 0.0))
-                    c.execute("UPDATE predictions SET used_in_training = 1 WHERE actual_rain IS NOT NULL AND features IS NOT NULL AND used_in_training = 0")
+                    # Archive oldest 50 items (Limit Reset)
+                    c.execute("""UPDATE predictions SET used_in_training = 1 
+                                 WHERE id IN (
+                                     SELECT id FROM predictions 
+                                     WHERE used_in_training = 0 
+                                     ORDER BY timestamp ASC 
+                                     LIMIT 50
+                                 )""")
                 conn.commit()
                 conn.close()
             except Exception as e:
@@ -1011,7 +1034,7 @@ def retrain():
             
             return jsonify({
                 'success': True, 
-                'message': f'Retrained successfully with {valid_count} verified samples (Cumulative)',
+                'message': f'Retrained with {verified} new samples (Total: {valid_count})',
                 'output': result.stdout[:200] + '...'
             })
             
